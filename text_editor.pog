@@ -1,0 +1,438 @@
+
+Texteditor* active_editor;
+
+vec2 view_pos;
+
+struct Texteditor {
+
+    char* file_name;
+
+    Texteditor* next;
+    Texteditor* prev;
+
+    vec2 cursor_pos;
+
+    Line* first_line;
+
+    Cursor cursor;
+    Cursor selection_start;
+
+    float32 glyph_height;
+}
+
+struct Cursor {
+    Line* line;
+    int32 column;
+}
+
+void insert_texteditor(Texteditor* ed) {
+    ed.next = active_editor.next;
+    ed.prev = active_editor;
+
+    if active_editor.next active_editor.next.prev = ed;
+    active_editor.next = ed;
+
+    active_editor = ed;
+}
+
+Texteditor* texteditor_new() {
+    Texteditor* ed = malloc(sizeof Texteditor);
+
+    ed.file_name = null;
+    ed.next = null;
+    ed.prev = null;
+
+    ed.first_line = line_new();
+    ed.cursor.line = ed.first_line;
+    ed.cursor.column = 0;
+    ed.selection_start = ed.cursor;
+    ed.glyph_height = 0.05;
+
+    return ed;
+}
+
+struct Line {
+    StringBuilder sb;
+    Line* next;
+    Line* prev;
+}
+
+Line* line_new() {
+
+    // static Line* pool = null;
+
+    Line* line = malloc(sizeof Line);
+    line.sb = sb_create();
+    line.next = null;
+    line.prev = null;
+
+    return line;
+}
+
+// returns the line that switched places with ln
+Line* push_line(Line* ln) {
+    let ln1 = ln.prev;
+    let ln2 = ln;
+    let ln3 = ln.next;
+    let ln4 = ln.next.next;
+
+    if ln1 ln1.next = ln3;
+    ln3.prev = ln1;
+
+    ln2.next = ln4;
+    if ln4 ln4.prev = ln2;
+
+    ln3.next = ln2;
+    ln2.prev = ln3;
+
+    return ln3;
+}
+
+void push_line_down(Line* ln) {
+    if !ln.next return;
+
+    ln = push_line(ln);
+    if ln.prev == null active_editor.first_line = ln;
+}
+
+void push_line_up(Line* ln) {
+    if !ln.prev return;
+    push_line(ln.prev);
+    if ln.prev == null active_editor.first_line = ln;
+}
+
+
+void move_cursor(Texteditor* ed, int32 m) {
+    // ed.cursor = clamp(ed.cursor, 0, ed.sb.length as int32);
+    ed.cursor.column = clamp(ed.cursor.column + m, 0, ed.cursor.line.sb.length as int32);
+}
+
+void move_cursor_up(Texteditor* ed) {
+    if ed.cursor.line.prev {
+        ed.cursor.line = ed.cursor.line.prev;
+        ed.cursor.column = clamp(ed.cursor.column, 0, ed.cursor.line.sb.length as int32);
+    }
+}
+
+void move_cursor_down(Texteditor* ed) {
+    if ed.cursor.line.next {
+        ed.cursor.line = ed.cursor.line.next;
+        ed.cursor.column = clamp(ed.cursor.column, 0, ed.cursor.line.sb.length as int32);
+    }
+}
+
+void move_cursor_vertical(Texteditor* ed, int32 steps) {
+    let ln = ed.cursor.line;
+
+    if steps < 0 while ln.prev and steps++ < 0  ln = ln.prev;
+    else         while ln.next and steps-- > 0  ln = ln.next;
+
+    ed.cursor.line = ln;
+    ed.cursor.column = clamp(ed.cursor.column, 0, ed.cursor.line.sb.length as int32);
+}
+
+void jump_cursor() {
+    int32 is_jump_loc(char c) {
+        return is_whitespace(c) or c == 0 as char;
+    }
+}
+
+void insert(Texteditor* ed, char c) {
+    if c == '\n' {
+        let line = line_new();
+
+        let rest = *ed.cursor.line.sb.content[ed.cursor.column];
+        sb_append(*line.sb, rest);
+
+        ed.cursor.line.sb.length = ed.cursor.column as uint32;
+        ed.cursor.line.sb.content[ed.cursor.line.sb.length] = 0 as char;
+
+        // inserting line
+        line.next = ed.cursor.line.next;
+        line.prev = ed.cursor.line;
+        if ed.cursor.line.next ed.cursor.line.next.prev = line;
+        ed.cursor.line.next = line;
+
+        ed.cursor.line = line;
+        ed.cursor.column = 0;
+        return;
+    }
+
+    string str = {*c, 1};
+    sb_insert(*ed.cursor.line.sb, ed.cursor.column++, str);
+}
+
+void insert_tab(Texteditor* ed) {
+    string str = make_string("    "); // TODO: hardcoded tabs to be 4 spaces
+    sb_insert(*ed.cursor.line.sb, ed.cursor.column, str);
+    ed.cursor.column += str.length as int32;
+}
+
+void delete(Texteditor* ed) {
+
+    if ed.cursor.column == 0 {
+        if ed.cursor.line.prev {
+            ed.cursor.line.prev.next = ed.cursor.line.next;
+            if ed.cursor.line.next ed.cursor.line.next.prev = ed.cursor.line.prev;
+
+            ed.cursor.column = ed.cursor.line.prev.sb.length as int32;
+            sb_append(*ed.cursor.line.prev.sb, ed.cursor.line.sb.content);
+
+            let del_line = ed.cursor.line;
+            ed.cursor.line = ed.cursor.line.prev;
+            free(del_line); // TODO: pool up deleted lines and reuse
+        }
+        return;
+    }
+
+    sb_remove(*ed.cursor.line.sb, --ed.cursor.column, 1);
+}
+
+enum Tokenkind {
+    whitespace;
+    word;
+    keyword;
+    punctuation;
+    number_literal;
+    string_literal;
+    comment;
+    unknown;
+}
+
+struct Token {
+    string text;
+    Tokenkind kind;
+}
+
+const keywords_count = 29;
+string* keywords;
+
+
+Token get_next_token(char* start) {
+    Token token = {0};
+    token.text.chars = start;
+    token.text.length = 0;
+    token.kind = .unknown;
+
+
+    if is_letter(@start) or @start == '_' {
+        token.kind = .word;
+
+        int32 is_word_char(char c) {
+            return is_alphanumeric(c) or c == '_';
+        }
+
+        while is_word_char(start[++token.text.length]);
+
+        for i in 0 .. keywords_count if string_equals(token.text, keywords[i]) {
+            token.kind = .keyword;
+            break;
+        }
+
+        return token;
+    }
+
+    if is_whitespace(@start) {
+        token.kind = .whitespace;
+
+        while is_whitespace(start[++token.text.length]);
+        return token;
+    }
+
+    if is_digit(@start) {
+        token.kind = .number_literal;
+
+        while is_digit(start[++token.text.length]);
+        return token;
+    }
+
+    if start[0] == '/' and start[1] == '/' {
+        token.kind = .comment;
+
+        while start[++token.text.length];
+        return token;
+    }
+
+    if @start == '"' {
+        token.kind = .string_literal;
+
+        while true {
+            let c = start[++token.text.length];
+            if c == '"' break;
+            if c == 0 break;
+        }
+
+        token.text.length++;
+        return token;
+    }
+
+    if is_punctuation(@start) {
+        token.kind = .punctuation;
+        token.text.length = 1;
+        return token;
+    }
+
+    token.text.length = 1;
+    return token;
+}
+
+
+
+void draw_texteditor_line(Line* line, vec2 pos, float32 height, uint32 line_number) {
+
+    vec2 line_num_pos = pos;
+    line_num_pos.x -= height * 2;
+    draw_text_backwards(line_num_pos, height * 0.7, to_string(line_number), Gray);
+
+    // print("Start of Line:\n");
+    uint32 i = 0;
+    while i < line.sb.length {
+        let token = get_next_token(*line.sb.content[i]);
+        // print("    ", token.kind as int32, " ", token.text.chars, " ", token.text.length, "\n");
+
+        Color color = White;
+
+
+        switch token.kind {
+            // case .whitespace:     color = theme.whitespace; break;
+            case .word:           color = theme.word; break;
+            case .keyword:        color = theme.keyword; break;
+            case .punctuation:    color = theme.punctuation; break;
+            case .number_literal: color = theme.number_literal; break;
+            case .string_literal: color = theme.string_literal; break;
+            case .comment:        color = theme.comment; break;
+            case .unknown:        color = theme.unknown; break;
+        }
+
+        pos = draw_text(pos, height, token.text, color);
+
+        i += token.text.length;
+    }
+
+    // draw_text(pos, height, line.sb.content);
+}
+
+void draw_texteditor(Texteditor* ed) {
+
+    { // draw contents
+        vec2 pos = neg(view_pos);
+        uint32 line_number = 1;
+
+        // count lines up until cursor
+        Line* line = ed.first_line;
+        while line != ed.cursor.line {
+            pos.y -= ed.glyph_height;
+
+            line = line.next;
+            line_number++;
+        }
+
+        // draw cursor
+        vec2 cursor_size = { ed.glyph_height * 0.5, ed.glyph_height };
+        ed.cursor_pos = pos;
+        ed.cursor_pos.x += ed.cursor.column * cursor_size.x;
+        draw_rect(ed.cursor_pos, cursor_size);
+        ed.cursor_pos = add(ed.cursor_pos, view_pos);
+
+        draw_texteditor_line(line, pos, ed.glyph_height, line_number);
+
+        int32 lines_on_page = (2 / ed.glyph_height) as int32;
+        vec2 line_pos = pos;
+
+        for i : 0 .. lines_on_page {
+            line_pos.y += ed.glyph_height;
+            if line.prev line = line.prev;
+            else break;
+            draw_texteditor_line(line, line_pos, ed.glyph_height, (line_number - i - 1) as uint32);
+        }
+
+        line_pos = pos;
+        line = ed.cursor.line;
+
+        for i : 0 .. lines_on_page {
+            line_pos.y -= ed.glyph_height;
+            if line.next line = line.next;
+            else break;
+            draw_texteditor_line(line, line_pos, ed.glyph_height, (line_number + i + 1) as uint32);
+        }
+    }
+
+    { // draw tabs:
+        const tab_text_height = 0.05;
+        vec2 pos = { -1.5, 1 - tab_text_height * 0.5 };
+        let current_ed = ed;
+        loop: {
+            char* name = current_ed.file_name ? current_ed.file_name : "untitled";
+            pos = draw_text(pos, tab_text_height, name);
+
+            pos.x += tab_text_height * 2;
+
+            current_ed = current_ed.next;
+            if current_ed != ed goto loop;
+        }
+    }
+}
+
+void load_file(Texteditor* ed, char* file_name) {
+
+    ed.file_name = file_name;
+    let file_name_length = strlen(file_name) + 1;
+    ed.file_name = malloc(file_name_length);
+    for i in 0 .. file_name_length ed.file_name[i] = file_name[i];
+
+    char* buffer = fileread(file_name);
+
+    Line* line = line_new();
+    ed.first_line = line;
+    ed.cursor.line = line;
+    ed.cursor.column = 0;
+
+    char* current = buffer;
+    char* start_of_line = current;
+
+    while @current {
+
+        if @current == '\n' {
+            sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
+            start_of_line = (current as uint64 + 1) as char*;
+
+            let l = line_new();
+            l.prev = line;
+            line.next = l;
+            line = l;
+        }
+
+        current++;
+    }
+
+    sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
+
+    free(buffer);
+
+    // line = ed.first_line;
+    // while line {
+    //     print("Line: \"", line.sb.content, "\"\n");
+    //     line = line.next;
+    // }
+}
+
+void save_file(Texteditor* ed) {
+
+    // TODO: this can be reused. make it static
+    StringBuilder sb = sb_create();
+
+    let line = ed.first_line;
+    while line {
+        sb_append(*sb, line.sb.content);
+        sb_append(*sb, "\n");
+        line = line.next;
+    }
+
+    let file_name = ed.file_name ? ed.file_name : "untitled.pog";
+
+    print("SAVING: ", file_name, "\n");
+    print(sb.content);
+    filewrite(file_name, sb.content);
+
+    sb_free(sb);
+}
