@@ -144,12 +144,10 @@ int32 main() {
         keywords[i++] = make_string("continue");
         keywords[i++] = make_string("break");
         keywords[i++] = make_string("return");
-        keywords[i++] = make_string("declare");
         keywords[i++] = make_string("type");
         keywords[i++] = make_string("as");
         keywords[i++] = make_string("const");
         keywords[i++] = make_string("for");
-        keywords[i++] = make_string("in");
         keywords[i++] = make_string("switch");
         keywords[i++] = make_string("default");
         keywords[i++] = make_string("case");
