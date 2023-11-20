@@ -1,0 +1,26 @@
+include "basic.pog";
+include "math.pog";
+
+const TotalGameobjects = 256;
+
+struct Gaymobject {
+    char* name;
+    vec2 pos;
+}
+
+void main() {
+    let msg = "Hello, World!\n";
+    print(msg);
+    Gaymobject* buffer = malloc((sizeof Gaymobject) * TotalGameobjects);
+
+    fuck_around {
+        fuck new Exception();
+    } find_out(Exception e) {
+        
+    }
+}
+
+// this overload of malloc makes it typed
+T* malloc($T t) {
+    return malloc(sizeof T) as T*;
+}

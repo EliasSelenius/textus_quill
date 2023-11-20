@@ -101,10 +101,11 @@ void push_line_up(Line* ln) {
     if ln.prev == null active_editor.first_line = ln;
 }
 
-
-void move_cursor(Texteditor* ed, int32 m) {
-    // ed.cursor = clamp(ed.cursor, 0, ed.sb.length as int32);
+// returns true if cursor moved
+int32 move_cursor(Texteditor* ed, int32 m) {
+    let old_loc = ed.cursor.column;
     ed.cursor.column = clamp(ed.cursor.column + m, 0, ed.cursor.line.sb.length as int32);
+    return ed.cursor.column != old_loc;
 }
 
 void move_cursor_up(Texteditor* ed) {
@@ -131,11 +132,39 @@ void move_cursor_vertical(Texteditor* ed, int32 steps) {
     ed.cursor.column = clamp(ed.cursor.column, 0, ed.cursor.line.sb.length as int32);
 }
 
-void jump_cursor() {
-    int32 is_jump_loc(char c) {
-        return is_whitespace(c) or c == 0 as char;
-    }
+void jump_cursor(Texteditor* ed, int32 dir) {
+
+    int32 offset = dir == -1 ? -1 : 0;
+
+    int32 is_whitespace_or_null(char c) { return is_whitespace(c) or c == 0; }
+
+    // skip any whitespace in begining
+    while is_whitespace_or_null(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
+
+    while is_punctuation(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
+
+    while is_alphanumeric(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
 }
+
+void jump_cursor_vertical(Texteditor* ed, int32 dir) {
+    Line* ln = ed.cursor.line;
+
+    if dir == -1 {
+        while ln.next and is_whitespace_or_empty(to_string(ln.sb)) ln = ln.next;
+        while ln.next and !is_whitespace_or_empty(to_string(ln.sb)) ln = ln.next;
+    } else {
+        while ln.prev and is_whitespace_or_empty(to_string(ln.sb)) ln = ln.prev;
+        while ln.prev and !is_whitespace_or_empty(to_string(ln.sb)) ln = ln.prev;
+    }
+
+    ed.cursor.line = ln;
+    ed.cursor.column = clamp(ed.cursor.column, 0, ed.cursor.line.sb.length as int32);
+}
+
+
+
+
+
 
 void insert(Texteditor* ed, char c) {
     if c == '\n' {
@@ -203,9 +232,6 @@ struct Token {
     string text;
     Tokenkind kind;
 }
-
-const keywords_count = 29;
-string* keywords;
 
 
 Token get_next_token(char* start) {

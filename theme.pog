@@ -1,0 +1,103 @@
+
+
+ColorTheme* theme;
+
+ColorTheme theme_programer_art;
+ColorTheme theme_kimbie_dark;
+
+const keywords_count = 27;
+string* keywords;
+
+
+struct ColorTheme {
+    Color background;
+
+    // Tokens:
+    // Color whitespace;
+    Color word;
+    Color keyword;
+    Color punctuation;
+    Color number_literal;
+    Color string_literal;
+    Color comment;
+    Color unknown;
+}
+
+void init_themes() {
+
+    { // init keywords
+        int32 i = 0;
+        keywords = malloc(keywords_count * sizeof string);
+
+        keywords[i++] = make_string("struct");
+        keywords[i++] = make_string("enum");
+        keywords[i++] = make_string("alloc");
+        keywords[i++] = make_string("let");
+        keywords[i++] = make_string("include");
+        keywords[i++] = make_string("if");
+        keywords[i++] = make_string("else");
+        keywords[i++] = make_string("while");
+        keywords[i++] = make_string("true");
+        keywords[i++] = make_string("false");
+        keywords[i++] = make_string("and");
+        keywords[i++] = make_string("or");
+        keywords[i++] = make_string("null");
+        keywords[i++] = make_string("continue");
+        keywords[i++] = make_string("break");
+        keywords[i++] = make_string("return");
+        keywords[i++] = make_string("type");
+        keywords[i++] = make_string("as");
+        keywords[i++] = make_string("const");
+        keywords[i++] = make_string("for");
+        keywords[i++] = make_string("switch");
+        keywords[i++] = make_string("default");
+        keywords[i++] = make_string("case");
+        keywords[i++] = make_string("goto");
+        keywords[i++] = make_string("with");
+        keywords[i++] = make_string("namespace");
+        keywords[i++] = make_string("sizeof");
+
+        if i != keywords_count {
+            print("Something went wrong with keywords\n");
+            exit(-1);
+        }
+    }
+
+    theme_programer_art.background     = {30, 30, 30, 255} as Color;
+    theme_programer_art.word           = Red;
+    theme_programer_art.keyword        = Purple;
+    theme_programer_art.punctuation    = White;
+    theme_programer_art.number_literal = Cyan;
+    theme_programer_art.string_literal = Yellow;
+    theme_programer_art.comment        = Green;
+    theme_programer_art.unknown        = White;
+
+    /*
+        #DC3958	Variables, tags
+        #8AB1B0	Functions, CSS #ids, markup headings
+        #088649	Embedded punctuation (e.g. ${} or {} )
+        #F06431	Classes, CSS classes
+        #7E602C	Regex, escape characters, attributes and preprocessors
+    */
+    theme_kimbie_dark.background     = rgba(0x221A0FFF);
+    theme_kimbie_dark.word           = rgba(0xDC3958FF); // blue: rgba(0x8AB1B0FF);
+    theme_kimbie_dark.keyword        = rgba(0x98676AFF);
+    theme_kimbie_dark.punctuation    = rgba(0xD3AF86FF);
+    theme_kimbie_dark.number_literal = rgba(0xF79A32FF);
+    theme_kimbie_dark.string_literal = rgba(0x889B4AFF);
+    theme_kimbie_dark.comment        = rgba(0xA57A4CFF);
+    theme_kimbie_dark.unknown        = rgba(0xFFFFFFFF);
+
+    set_theme(*theme_kimbie_dark);
+}
+
+
+void set_theme(ColorTheme* t) {
+    theme = t;
+
+    glClearColor(theme.background.r as float32 / 255,
+                 theme.background.g as float32 / 255,
+                 theme.background.b as float32 / 255,
+                 theme.background.a as float32 / 255);
+}
+

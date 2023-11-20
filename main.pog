@@ -1,10 +1,11 @@
 
+include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
 include "text_editor.pog";
-
+include "theme.pog";
 
 // Compile:
-// ../plang/bin/plang.exe main.pog cflags -lglfw3dll
+// ../plang/bin/plang.exe main.pog cflags -lglfw3dll -l../plang/bin/pog_compiler
 
 
 /*
@@ -17,31 +18,20 @@ include "text_editor.pog";
     <Done> - saving files (existing and new files)
     - text selection
     - del key
-    - shift-del to delete line
+    - shift-del to delete line and put into clipboard
     - ctrl-jump horizontal
     - ctrl-jump vertical
     - rename file
     - builtin terminal
     - display binary file
+
+    intelisense engine:
+    - texteditor internal text format -> tokens for parser
+    - parse_unit()
+    - bind_units()
+    - get list of errors to report instead of parser calling exit()
+    - cleanup after a unit so that rebinding can take place
 */
-
-
-ColorTheme* theme;
-
-
-struct ColorTheme {
-    Color background;
-
-    // Tokens:
-    // Color whitespace;
-    Color word;
-    Color keyword;
-    Color punctuation;
-    Color number_literal;
-    Color string_literal;
-    Color comment;
-    Color unknown;
-}
 
 
 void on_text_input(GLFWwindow* w, uint32 codepoint) {
@@ -51,7 +41,7 @@ void on_text_input(GLFWwindow* w, uint32 codepoint) {
 }
 
 void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, int32 mods) {
-    print(key, " ", scancode, " ", action, " ", mods, "\n");
+    // print(key, " ", scancode, " ", action, " ", mods, "\n");
 
     if action == GLFW_RELEASE return;
 
@@ -84,8 +74,11 @@ void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, i
 
         case GLFW_MOD_CONTROL: switch (key) {
 
-            case GLFW_KEY_RIGHT: move_cursor(active_editor, get_next_token(*active_editor.cursor.line.sb.content[active_editor.cursor.column]).text.length as int32); break;
-            // case GLFW_KEY_LEFT: move_cursor(editor, -get_next_token(*editor.cursor.line.sb.content[editor.cursor.column])); break;
+            case GLFW_KEY_RIGHT: jump_cursor(active_editor,  1); break;
+            case GLFW_KEY_LEFT:  jump_cursor(active_editor, -1); break;
+            case GLFW_KEY_DOWN: jump_cursor_vertical(active_editor, -1); break;
+            case GLFW_KEY_UP:   jump_cursor_vertical(active_editor,  1); break;
+
 
             case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
             case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
@@ -122,98 +115,33 @@ void on_drop(GLFWwindow* window, int32 path_count, char** paths) {
     }
 }
 
-int32 main() {
-
-    { // init keywords
-        int32 i = 0;
-        keywords = malloc(keywords_count * sizeof string);
-
-        keywords[i++] = make_string("struct");
-        keywords[i++] = make_string("enum");
-        keywords[i++] = make_string("alloc");
-        keywords[i++] = make_string("let");
-        keywords[i++] = make_string("include");
-        keywords[i++] = make_string("if");
-        keywords[i++] = make_string("else");
-        keywords[i++] = make_string("while");
-        keywords[i++] = make_string("true");
-        keywords[i++] = make_string("false");
-        keywords[i++] = make_string("and");
-        keywords[i++] = make_string("or");
-        keywords[i++] = make_string("null");
-        keywords[i++] = make_string("continue");
-        keywords[i++] = make_string("break");
-        keywords[i++] = make_string("return");
-        keywords[i++] = make_string("type");
-        keywords[i++] = make_string("as");
-        keywords[i++] = make_string("const");
-        keywords[i++] = make_string("for");
-        keywords[i++] = make_string("switch");
-        keywords[i++] = make_string("default");
-        keywords[i++] = make_string("case");
-        keywords[i++] = make_string("goto");
-        keywords[i++] = make_string("with");
-        keywords[i++] = make_string("namespace");
-        keywords[i++] = make_string("sizeof");
-
-        if i != keywords_count {
-            print("Something went wrong with keywords\n");
-            return -1;
-        }
+void on_window_focus(GLFWwindow* window, int32 focused) {
+    if focused {
+        // glfwSetWindowOpacity(window, 1);
+    } else {
+        // glfwSetWindowOpacity(window, 0.5);
     }
+}
 
+int32 main() {
 
     active_editor = texteditor_new();
     active_editor.prev = active_editor;
     active_editor.next = active_editor;
 
-    { // themes:
 
-        ColorTheme programer_art;
-        programer_art.background     = {30, 30, 30, 255} as Color;
-        programer_art.word           = Red;
-        programer_art.keyword        = Purple;
-        programer_art.punctuation    = White;
-        programer_art.number_literal = Cyan;
-        programer_art.string_literal = Yellow;
-        programer_art.comment        = Green;
-        programer_art.unknown        = White;
-
-        /*
-            #DC3958	Variables, tags
-            #8AB1B0	Functions, CSS #ids, markup headings
-            #088649	Embedded punctuation (e.g. ${} or {} )
-            #F06431	Classes, CSS classes
-            #7E602C	Regex, escape characters, attributes and preprocessors
-        */
-
-        ColorTheme kimbie_dark;
-        kimbie_dark.background     = rgba(0x221A0FFF);
-        kimbie_dark.word           = rgba(0xDC3958FF); // blue: rgba(0x8AB1B0FF);
-        kimbie_dark.keyword        = rgba(0x98676AFF);
-        kimbie_dark.punctuation    = rgba(0xD3AF86FF);
-        kimbie_dark.number_literal = rgba(0xF79A32FF);
-        kimbie_dark.string_literal = rgba(0x889B4AFF);
-        kimbie_dark.comment        = rgba(0xA57A4CFF);
-        kimbie_dark.unknown        = rgba(0xFFFFFFFF);
-
-        theme = *kimbie_dark;
-    }
-
+    init_parser();
+    init_string_table();
 
 
     grax_init();
     glfwSetCharCallback(main_window, on_text_input);
     glfwSetKeyCallback(main_window, on_key_input);
     glfwSetDropCallback(main_window, on_drop);
+    glfwSetWindowFocusCallback(main_window, on_window_focus);
 
-    // glfwSetWindowOpacity(window, 0.5);
 
-    glClearColor(theme.background.r as float32 / 255,
-                 theme.background.g as float32 / 255,
-                 theme.background.b as float32 / 255,
-                 theme.background.a as float32 / 255);
-
+    init_themes();
 
     view_pos.x = 1;
 
