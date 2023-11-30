@@ -401,7 +401,6 @@ void draw_texteditor(Texteditor* ed) {
 
 void load_file(Texteditor* ed, char* file_name) {
 
-    ed.file_name = file_name;
     let file_name_length = strlen(file_name) + 1;
     ed.file_name = malloc(file_name_length);
     for i : 0 .. file_name_length ed.file_name[i] = file_name[i];

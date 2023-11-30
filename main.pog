@@ -19,8 +19,8 @@ include "theme.pog";
     - text selection
     - del key
     - shift-del to delete line and put into clipboard
-    - ctrl-jump horizontal
-    - ctrl-jump vertical
+    <Done> - ctrl-jump horizontal
+    <Done> - ctrl-jump vertical
     - rename file
     - builtin terminal
     - display binary file
@@ -60,6 +60,8 @@ void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, i
             case GLFW_KEY_LEFT: move_cursor(active_editor, -1); break;
             case GLFW_KEY_DOWN: move_cursor_down(active_editor); break;
             case GLFW_KEY_UP: move_cursor_up(active_editor); break;
+
+            case GLFW_KEY_F11: toggle_fullscreen(main_window); break;
 
             case GLFW_KEY_PAGE_UP: {
                 int32 num_lines_on_page = (2 / active_editor.glyph_height) as int32;
