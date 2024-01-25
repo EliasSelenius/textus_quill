@@ -452,12 +452,19 @@ void save_file(Texteditor* ed) {
         sb_append(*sb, "\n");
         line = line.next;
     }
+    sb_remove(*sb, (sb.length - 1) as int32, 1); // remove trailing '\n'
 
     let file_name = ed.file_name ? ed.file_name : "untitled.pog";
 
     print("SAVING: ", file_name, "\n");
     print(sb.content);
     filewrite(file_name, sb.content);
+
+    { // parser test
+        let parser = init_parser();
+        parser_parse_source(parser, sb.content);
+        parse(parser);
+    }
 
     sb_free(sb);
 }

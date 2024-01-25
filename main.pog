@@ -1,10 +1,11 @@
 
 include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
-include "text_editor.pog";
-include "theme.pog";
+include "src/text_editor.pog";
+include "src/theme.pog";
 
 // Compile:
+// -O0 -g -fsanitize=address -fno-omit-frame-pointer
 // ../plang/bin/plang.exe main.pog cflags -lglfw3dll -l../plang/bin/pog_compiler
 
 
@@ -30,7 +31,7 @@ include "theme.pog";
     - parse_unit()
     - bind_units()
     - get list of errors to report instead of parser calling exit()
-    - cleanup after a unit so that rebinding can take place
+    - cleanup after a unit so that rebinding can take place (use arenas)
 */
 
 
@@ -132,8 +133,6 @@ int32 main() {
     active_editor.next = active_editor;
 
 
-    init_parser();
-    init_string_table();
 
 
     grax_init();
@@ -146,6 +145,12 @@ int32 main() {
     init_themes();
 
     view_pos.x = 1;
+
+    void on_file(FileInfo info, void* user_data) {
+        print(info, "\n");
+    }
+
+    enumerate_files("../planetoid", print_file, null);
 
     while grax_loop() {
 
@@ -163,7 +168,6 @@ int32 main() {
         }
 
         draw_texteditor(active_editor);
-        // glUniform2f(glGetUniformLocation(shader.gl_handle, "view_pos"), view_pos.x, view_pos.y);
 
 
         view_pos.y = lerp(0.1, view_pos.y, active_editor.cursor_pos.y);
