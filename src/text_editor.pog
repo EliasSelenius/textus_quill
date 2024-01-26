@@ -5,7 +5,7 @@ vec2 view_pos;
 
 struct Texteditor {
 
-    char* file_name;
+    string file_name;
 
     Texteditor* next;
     Texteditor* prev;
@@ -26,6 +26,14 @@ struct Cursor {
 }
 
 void insert_texteditor(Texteditor* ed) {
+
+    if !active_editor {
+        active_editor = ed;
+        ed.next = ed;
+        ed.prev = ed;
+        return;
+    }
+
     ed.next = active_editor.next;
     ed.prev = active_editor;
 
@@ -38,7 +46,7 @@ void insert_texteditor(Texteditor* ed) {
 Texteditor* texteditor_new() {
     Texteditor* ed = malloc(sizeof Texteditor);
 
-    ed.file_name = null;
+    ed.file_name = {null, 0};
     ed.next = null;
     ed.prev = null;
 
@@ -49,6 +57,28 @@ Texteditor* texteditor_new() {
     ed.glyph_height = 0.05;
 
     return ed;
+}
+
+void texteditor_free(Texteditor* ed) {
+    Line* line = ed.first_line;
+    while line {
+        sb_free(line.sb);
+        let fl = line;
+        line = line.next;
+        free(fl);
+    }
+
+    if ed.file_name.chars free(ed.file_name.chars);
+
+    ed.prev.next = ed.next;
+    ed.next.prev = ed.prev;
+
+    if ed == active_editor {
+        if ed.prev != ed  active_editor = ed.prev;
+        else active_editor = null;
+    }
+
+    free(ed);
 }
 
 struct Line {
@@ -388,8 +418,8 @@ void draw_texteditor(Texteditor* ed) {
         vec2 pos = { -1.5, 1 - tab_text_height * 0.5 };
         let current_ed = ed;
         loop: {
-            char* name = current_ed.file_name ? current_ed.file_name : "untitled";
-            pos = draw_text(pos, tab_text_height, name);
+            char* name = current_ed.file_name.chars ? current_ed.file_name.chars : "untitled";
+            pos = draw_text(pos, tab_text_height, name, White);
 
             pos.x += tab_text_height * 2;
 
@@ -399,24 +429,19 @@ void draw_texteditor(Texteditor* ed) {
     }
 }
 
-void load_file(Texteditor* ed, char* file_name) {
+Texteditor* open_text_file(char* file_name) {
 
-    let file_name_length = strlen(file_name) + 1;
-    ed.file_name = malloc(file_name_length);
-    for i : 0 .. file_name_length ed.file_name[i] = file_name[i];
+    let ed = texteditor_new();
+    insert_texteditor(ed);
+    ed.file_name = alloc_string_copy(file_name);
 
     char* buffer = fileread(file_name);
-
-    Line* line = line_new();
-    ed.first_line = line;
-    ed.cursor.line = line;
-    ed.cursor.column = 0;
-
     char* current = buffer;
     char* start_of_line = current;
 
-    while @current {
+    let line = ed.first_line;
 
+    while @current {
         if @current == '\n' {
             sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
             start_of_line = (current as uint64 + 1) as char*;
@@ -426,25 +451,20 @@ void load_file(Texteditor* ed, char* file_name) {
             line.next = l;
             line = l;
         }
-
         current++;
     }
 
     sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
 
     free(buffer);
-
-    // line = ed.first_line;
-    // while line {
-    //     print("Line: \"", line.sb.content, "\"\n");
-    //     line = line.next;
-    // }
+    return ed;
 }
 
 void save_file(Texteditor* ed) {
 
     // TODO: this can be reused. make it static
-    StringBuilder sb = sb_create();
+    static StringBuilder sb = sb_create();
+    sb_clear(*sb);
 
     let line = ed.first_line;
     while line {
@@ -454,17 +474,17 @@ void save_file(Texteditor* ed) {
     }
     sb_remove(*sb, (sb.length - 1) as int32, 1); // remove trailing '\n'
 
-    let file_name = ed.file_name ? ed.file_name : "untitled.pog";
+    let file_name = ed.file_name.chars ? ed.file_name.chars : "untitled.pog";
 
     print("SAVING: ", file_name, "\n");
     print(sb.content);
     filewrite(file_name, sb.content);
 
-    { // parser test
-        let parser = init_parser();
-        parser_parse_source(parser, sb.content);
-        parse(parser);
-    }
+    // { // parser test
+    //     let parser = init_parser();
+    //     parser_parse_source(parser, sb.content);
+    //     parse(parser);
+    // }
 
-    sb_free(sb);
+    // sb_free(sb);
 }

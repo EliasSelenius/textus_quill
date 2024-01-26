@@ -1,0 +1,26 @@
+
+Project* projects = list_create(sizeof Project);
+
+struct Project {
+    string root_file_path;
+    string name;
+}
+
+void add_folder(FileInfo info, void* user_data) {
+    Project p = {};
+    p.root_file_path = alloc_string_copy(info.path);
+    list_add(*projects, *p);
+}
+
+void load_all_projects_in_folder(char* projects_folder) {
+    enumerate_files(projects_folder, add_folder, null, false);
+}
+
+void draw_project_selection_menu() {
+    const text_size = 0.1;
+    vec2 cursor = neg(view_pos);
+    for 0 .. list_length(projects) {
+        draw_text(cursor, text_size, projects[it].root_file_path, White);
+        cursor.y -= text_size;
+    }
+}

@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "textus quill",
+            "type": "lldb",
+            "request": "launch",
+            "terminal": "external",
+            "program": "${workspaceFolder}/output.exe",
+            "args": [],
+            "cwd": "${workspaceFolder}",
+        }
+    ]
+}

@@ -3,6 +3,7 @@ include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
 include "src/text_editor.pog";
 include "src/theme.pog";
+include "src/projects.pog";
 
 // Compile:
 // -O0 -g -fsanitize=address -fno-omit-frame-pointer
@@ -94,7 +95,7 @@ void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, i
             } break;
 
             case GLFW_KEY_W: {
-
+                texteditor_free(active_editor);
             } break;
         } break;
 
@@ -111,10 +112,7 @@ void on_drop(GLFWwindow* window, int32 path_count, char** paths) {
     glfwFocusWindow(window);
 
     for i : 0 .. path_count {
-        let ed = texteditor_new();
-        insert_texteditor(ed);
-
-        load_file(active_editor, paths[i]);
+        let ed = open_text_file(paths[i]);
     }
 }
 
@@ -128,10 +126,10 @@ void on_window_focus(GLFWwindow* window, int32 focused) {
 
 int32 main() {
 
-    active_editor = texteditor_new();
-    active_editor.prev = active_editor;
-    active_editor.next = active_editor;
+    load_all_projects_in_folder("D:/Documents/repos");
 
+    insert_texteditor(texteditor_new());
+    open_text_file("src/text_editor.pog");
 
 
 
@@ -150,7 +148,7 @@ int32 main() {
         print(info, "\n");
     }
 
-    enumerate_files("../planetoid", print_file, null);
+    enumerate_files("../planetoid", print_file, null, true);
 
     while grax_loop() {
 
@@ -167,10 +165,23 @@ int32 main() {
             }
         }
 
-        draw_texteditor(active_editor);
+
+        if active_editor {
+            draw_texteditor(active_editor);
+
+            float32 abs(float32 x) {
+                if x < 0 return -x;
+                return x;
+            }
+
+            view_pos.y = lerp(0.1, view_pos.y, active_editor.cursor_pos.y);
 
 
-        view_pos.y = lerp(0.1, view_pos.y, active_editor.cursor_pos.y);
+
+        } else draw_project_selection_menu();
+
+
+
     }
 
     return 0;
