@@ -1,0 +1,102 @@
+
+/*
+Stochastic variable: (also known as Random Variable)
+    let X be result of dice roll.
+    We havent rolled the dice yet, so we dont know the value of X
+    and we cant solve for it like we would in normal algebra.
+    That makes X a stochastic variable.
+    What we can do is determine the probability of X meeting certain criteria
+    Here the probability rolling a 1 on the dice is 1/6
+        P(X = 1)     = 1/6  ->  "probability of X being 1 equals 1/6"
+        P(X < 4)     = 1/2  ->  "probability of X being less than 4 equals 1/2"
+        P(X is even) = 1/2  ->  "probability of X being an even number equals 1/2"
+
+    We can setup equations where we use X
+        Y = 2X + 1
+        P(Y = 1) = P(2X + 1 = 1) = 0
+        P(Y > 4) = P(2X + 1 > 4) = P(X > 1.5) = 5/6
+
+Probability space: (also kown as Sample Space)
+    is the set of all possible outcomes.
+    For our dice roll X we have this probability space
+        S = {1, 2, 3, 4, 5, 6}
+    an event can be tought of as any subset of the probability space
+    P(X = 1)     = P(X in {1})
+    P(X < 4)     = P(X in {1, 2, 3})
+    P(X is even) = P(X in {2, 4, 6})
+
+
+Expectation value:
+    expectation value is like a weighted average
+    You take every possible outcome (probability space) and multiply them with
+    their corresponding probability and sum all those terms together
+*/
+
+
+// S_X = ProbSpace{1, 6, 1} = {1, 2, 3, 4, 5, 6}
+// Y = 2X + 1
+// S_Y = ProbSpace{3, 13, 2} = {3, 5, 7, 9, 11, 13}
+struct ProbSpace {
+    int32 first_value;
+    int32 last_value;
+    int32 step;
+}
+
+struct ProbDFuncSample {
+    float32 outcome;
+    float32 probability;
+}
+
+// Probability Density/Distribution Function
+struct ProbDFunc { // TODO: for now we only have discrete variables
+    ProbDFuncSample[] samples;
+    // float32(float32) func; NOTE: this is how we can make continous pdfs
+}
+
+// Binomial distribution
+ProbDFunc B(uint32 n, float32 p) {
+    for 0 .. n + 1 {
+
+    }
+}
+
+
+struct StochasticVariable {
+    // ProbSpace S;
+    ProbDFunc pdf;
+}
+
+// probability of some outcome. P(sv == outcome) or P(X = x)
+float32 P(StochasticVariable sv, float32 outcome) {
+    for sv.pdf.samples if it.outcome == outcome return it.probability;
+}
+
+// Expectation Value
+float32 E(StochasticVariable sv) {
+    float32 res = 0;
+    for sv.pdf.samples  res += it.outcome * it.probability;
+    return res;
+}
+
+float32 sq(float32 a) { return a * a; }
+
+// Variance
+float32 Var(StochasticVariable sv) {
+    let e = E(sv);
+    float32 res = 0;
+    for sv.pdf.samples  res += sq(it.outcome - e) * it.probability;
+    return res;
+}
+
+// Standard Deviation
+float32 SD(StochasticVariable sv) { return sqrtf(Var(sv)); }
+
+// use psudo random number generator to evaluate this random variable to a value in adherence to the probability distribution
+float32 eval(StochasticVariable sv) {
+    return 0; // TODO: implement
+}
+
+
+float32 standard_normal(float x) {
+    return exp(-x*x / 2) / sqrtf(Tau);
+}
