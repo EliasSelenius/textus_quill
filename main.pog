@@ -7,7 +7,7 @@ include "src/projects.pog";
 
 // Compile:
 // -O0 -g -fsanitize=address -fno-omit-frame-pointer
-// ../plang/bin/plang.exe main.pog cflags -lglfw3dll -l../plang/bin/pog_compiler
+// ../plang/bin/plang.exe main.pog cflags -g -lglfw3dll -l../plang/bin/pog_compiler
 
 
 /*
@@ -36,74 +36,40 @@ include "src/projects.pog";
 */
 
 
+uint32 on_text_input_call_count = 0;
+
+char* text_input_this_frame = malloc(128);
+
 void on_text_input(GLFWwindow* w, uint32 codepoint) {
     char c = codepoint as char;
     // print("codepoint: ", codepoint, "\n");
-    insert(active_editor, c);
+    if active_editor insert(active_editor, c);
+
+    text_input_this_frame[on_text_input_call_count++] = c;
 }
 
+
 void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, int32 mods) {
-    // print(key, " ", scancode, " ", action, " ", mods, "\n");
 
     if action == GLFW_RELEASE return;
 
+    if active_editor and text_editor_recive_keyboard_input(active_editor, key, mods)  return;
+
     switch (mods) {
         case 0: switch (key) {
-            case GLFW_KEY_ENTER: insert(active_editor, '\n'); break;
-            case GLFW_KEY_BACKSPACE: delete(active_editor); break;
-            case GLFW_KEY_TAB: insert_tab(active_editor); break;
-
-            case GLFW_KEY_KP_7:
-            case GLFW_KEY_HOME: active_editor.cursor.column = 0; break;
-            case GLFW_KEY_KP_1:
-            case GLFW_KEY_END: active_editor.cursor.column = active_editor.cursor.line.sb.length as int32; break;
-
-            case GLFW_KEY_RIGHT: move_cursor(active_editor, 1); break;
-            case GLFW_KEY_LEFT: move_cursor(active_editor, -1); break;
-            case GLFW_KEY_DOWN: move_cursor_down(active_editor); break;
-            case GLFW_KEY_UP: move_cursor_up(active_editor); break;
-
             case GLFW_KEY_F11: toggle_fullscreen(main_window); break;
-
-            case GLFW_KEY_PAGE_UP: {
-                int32 num_lines_on_page = (2 / active_editor.glyph_height) as int32;
-                move_cursor_vertical(active_editor, -num_lines_on_page);
-            } break;
-            case GLFW_KEY_PAGE_DOWN: {
-                int32 num_lines_on_page = (2 / active_editor.glyph_height) as int32;
-                move_cursor_vertical(active_editor, num_lines_on_page);
-            } break;
         } break;
 
-
         case GLFW_MOD_CONTROL: switch (key) {
-
-            case GLFW_KEY_RIGHT: jump_cursor(active_editor,  1); break;
-            case GLFW_KEY_LEFT:  jump_cursor(active_editor, -1); break;
-            case GLFW_KEY_DOWN: jump_cursor_vertical(active_editor, -1); break;
-            case GLFW_KEY_UP:   jump_cursor_vertical(active_editor,  1); break;
-
-
             case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
             case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
 
-            case GLFW_KEY_S: save_file(active_editor); break;
-
-            case GLFW_KEY_N: {
-                let ed = texteditor_new();
-                insert_texteditor(ed);
-            } break;
-
-            case GLFW_KEY_W: {
-                texteditor_free(active_editor);
-            } break;
+            case GLFW_KEY_N: insert_texteditor(texteditor_new()); break;
+            case GLFW_KEY_W: texteditor_free(active_editor); break;
         } break;
 
         case GLFW_MOD_ALT: switch (key) {
-            case GLFW_KEY_DOWN: push_line_down(active_editor.cursor.line); break;
-            case GLFW_KEY_UP: push_line_up(active_editor.cursor.line); break;
         } break;
-
     }
 }
 
@@ -132,7 +98,6 @@ int32 main() {
     open_text_file("src/text_editor.pog");
 
 
-
     grax_init();
     glfwSetCharCallback(main_window, on_text_input);
     glfwSetKeyCallback(main_window, on_key_input);
@@ -142,13 +107,13 @@ int32 main() {
 
     init_themes();
 
-    view_pos.x = 1;
 
-    void on_file(FileInfo info, void* user_data) {
-        print(info, "\n");
+
+    let files = get_all_files("src", false);
+    for 0 .. list_length(files) {
+        print(files[it], "\n");
     }
-
-    enumerate_files("../planetoid", print_file, null, true);
+    list_delete(files);
 
     while grax_loop() {
 
@@ -158,30 +123,27 @@ int32 main() {
         if key(GLFW_KEY_LEFT_CONTROL) {
             if key('-') {
                 active_editor.glyph_height *= 0.9;
-                view_pos.y = active_editor.cursor_pos.y * 0.9;
+                active_editor.view_pos.y = active_editor.cursor_pos.y * 0.9;
             } else if key('=') {
                 active_editor.glyph_height *= 1.1;
-                view_pos.y = active_editor.cursor_pos.y * 1.1;
+                active_editor.view_pos.y = active_editor.cursor_pos.y * 1.1;
             }
         }
 
 
         if active_editor {
+            active_editor.view_pos.y += mouse_scroll * 0.1;
+
             draw_texteditor(active_editor);
 
-            float32 abs(float32 x) {
-                if x < 0 return -x;
-                return x;
-            }
-
-            view_pos.y = lerp(0.1, view_pos.y, active_editor.cursor_pos.y);
-
-
+            active_editor.view_pos.y = lerp(0.1, active_editor.view_pos.y, active_editor.cursor_pos.y);
 
         } else draw_project_selection_menu();
 
 
-
+        text_input_this_frame[on_text_input_call_count] = 0;
+        // if on_text_input_call_count != 0 print("\"", text_input_this_frame, "\"\n");
+        on_text_input_call_count = 0;
     }
 
     return 0;

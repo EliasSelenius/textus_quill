@@ -9,6 +9,7 @@ struct Project {
 void add_folder(FileInfo info, void* user_data) {
     Project p = {};
     p.root_file_path = alloc_string_copy(info.path);
+    p.name = trim(substr_to_end(p.root_file_path, '/'), 1);
     list_add(*projects, *p);
 }
 
@@ -18,9 +19,17 @@ void load_all_projects_in_folder(char* projects_folder) {
 
 void draw_project_selection_menu() {
     const text_size = 0.1;
-    vec2 cursor = neg(view_pos);
+
+    Color text_color = rgba(0xaaaaaaff);
+
+    vec2 cursor = {-1, 0};
     for 0 .. list_length(projects) {
-        draw_text(cursor, text_size, projects[it].root_file_path, White);
+        draw_text(cursor, text_size, projects[it].name, White);
         cursor.y -= text_size;
+        cursor.x += text_size * 2;
+        draw_text(cursor, text_size * 0.6, projects[it].root_file_path, text_color);
+
+        cursor.y -= text_size * 2;
+        cursor.x = -1;
     }
 }

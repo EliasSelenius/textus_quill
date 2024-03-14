@@ -54,7 +54,7 @@ void init_themes() {
         keywords[i++] = make_string("case");
         keywords[i++] = make_string("goto");
         keywords[i++] = make_string("with");
-        keywords[i++] = make_string("namespace");
+        keywords[i++] = make_string("static");
         keywords[i++] = make_string("sizeof");
 
         if i != keywords_count {
@@ -63,8 +63,8 @@ void init_themes() {
         }
     }
 
-    theme_programer_art.background     = {30, 30, 30, 255} as Color;
-    theme_programer_art.word           = Red;
+    theme_programer_art.background     = {12, 12, 12, 255} as Color;
+    theme_programer_art.word           = Gray;
     theme_programer_art.keyword        = Purple;
     theme_programer_art.punctuation    = White;
     theme_programer_art.number_literal = Cyan;
@@ -88,7 +88,8 @@ void init_themes() {
     theme_kimbie_dark.comment        = rgba(0xA57A4CFF);
     theme_kimbie_dark.unknown        = rgba(0xFFFFFFFF);
 
-    set_theme(*theme_kimbie_dark);
+    // set_theme(*theme_kimbie_dark);
+    set_theme(*theme_programer_art);
 }
 
 

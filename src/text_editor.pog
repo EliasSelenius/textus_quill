@@ -1,7 +1,7 @@
 
 Texteditor* active_editor;
 
-vec2 view_pos;
+// TODO: idea: there might be a per texteditor arena to hold all the lines
 
 struct Texteditor {
 
@@ -10,6 +10,7 @@ struct Texteditor {
     Texteditor* next;
     Texteditor* prev;
 
+    vec2 view_pos;
     vec2 cursor_pos;
 
     Line* first_line;
@@ -56,6 +57,8 @@ Texteditor* texteditor_new() {
     ed.selection_start = ed.cursor;
     ed.glyph_height = 0.05;
 
+    ed.view_pos = {1, 0};
+
     return ed;
 }
 
@@ -88,9 +91,6 @@ struct Line {
 }
 
 Line* line_new() {
-
-    // static Line* pool = null;
-
     Line* line = malloc(sizeof Line);
     line.sb = sb_create();
     line.next = null;
@@ -132,7 +132,7 @@ void push_line_up(Line* ln) {
 }
 
 // returns true if cursor moved
-int32 move_cursor(Texteditor* ed, int32 m) {
+bool move_cursor(Texteditor* ed, int32 m) {
     let old_loc = ed.cursor.column;
     ed.cursor.column = clamp(ed.cursor.column + m, 0, ed.cursor.line.sb.length as int32);
     return ed.cursor.column != old_loc;
@@ -163,17 +163,12 @@ void move_cursor_vertical(Texteditor* ed, int32 steps) {
 }
 
 void jump_cursor(Texteditor* ed, int32 dir) {
+    char* cont = ed.cursor.line.sb.content;
+    int32 offset = clamp(dir, -1, 0);
 
-    int32 offset = dir == -1 ? -1 : 0;
-
-    int32 is_whitespace_or_null(char c) { return is_whitespace(c) or c == 0; }
-
-    // skip any whitespace in begining
-    while is_whitespace_or_null(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
-
-    while is_punctuation(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
-
-    while is_alphanumeric(ed.cursor.line.sb.content[ed.cursor.column + offset]) and move_cursor(ed, dir);
+    while is_whitespace_or_null(cont[ed.cursor.column + offset]) and move_cursor(ed, dir);
+    while is_punctuation(cont[ed.cursor.column + offset]) and move_cursor(ed, dir);
+    while is_alphanumeric(cont[ed.cursor.column + offset]) and move_cursor(ed, dir);
 }
 
 void jump_cursor_vertical(Texteditor* ed, int32 dir) {
@@ -228,23 +223,27 @@ void insert_tab(Texteditor* ed) {
 }
 
 void delete(Texteditor* ed) {
-
-    if ed.cursor.column == 0 {
-        if ed.cursor.line.prev {
-            ed.cursor.line.prev.next = ed.cursor.line.next;
-            if ed.cursor.line.next ed.cursor.line.next.prev = ed.cursor.line.prev;
-
-            ed.cursor.column = ed.cursor.line.prev.sb.length as int32;
-            sb_append(*ed.cursor.line.prev.sb, ed.cursor.line.sb.content);
-
-            let del_line = ed.cursor.line;
-            ed.cursor.line = ed.cursor.line.prev;
-            free(del_line); // TODO: pool up deleted lines and reuse
-        }
+    if ed.cursor.column {
+        sb_remove(*ed.cursor.line.sb, --ed.cursor.column, 1);
         return;
     }
 
-    sb_remove(*ed.cursor.line.sb, --ed.cursor.column, 1);
+    Line* del = ed.cursor.line;
+    Line* prev = del.prev;
+    Line* next = del.next;
+
+    if prev == null  return;
+
+    prev.next = next;
+    if next  next.prev = prev;
+
+    ed.cursor.column = prev.sb.length as int32;
+    ed.cursor.line = prev;
+
+    sb_append(*prev.sb, del.sb.content);
+
+    sb_free(del.sb);
+    free(del);
 }
 
 enum Tokenkind {
@@ -371,7 +370,7 @@ void draw_texteditor_line(Line* line, vec2 pos, float32 height, uint32 line_numb
 void draw_texteditor(Texteditor* ed) {
 
     { // draw contents
-        vec2 pos = neg(view_pos);
+        vec2 pos = neg(ed.view_pos);
         uint32 line_number = 1;
 
         // count lines up until cursor
@@ -388,7 +387,7 @@ void draw_texteditor(Texteditor* ed) {
         ed.cursor_pos = pos;
         ed.cursor_pos.x += ed.cursor.column * cursor_size.x;
         draw_rect(ed.cursor_pos, cursor_size);
-        ed.cursor_pos = add(ed.cursor_pos, view_pos);
+        ed.cursor_pos = add(ed.cursor_pos, ed.view_pos);
 
         draw_texteditor_line(line, pos, ed.glyph_height, line_number);
 
@@ -462,7 +461,6 @@ Texteditor* open_text_file(char* file_name) {
 
 void save_file(Texteditor* ed) {
 
-    // TODO: this can be reused. make it static
     static StringBuilder sb = sb_create();
     sb_clear(*sb);
 
@@ -477,14 +475,64 @@ void save_file(Texteditor* ed) {
     let file_name = ed.file_name.chars ? ed.file_name.chars : "untitled.pog";
 
     print("SAVING: ", file_name, "\n");
-    print(sb.content);
+    print(sb.content, "\n\n");
     filewrite(file_name, sb.content);
 
-    // { // parser test
-    //     let parser = init_parser();
-    //     parser_parse_source(parser, sb.content);
-    //     parse(parser);
-    // }
+    { // parser test
+        let parser = init_parser();
+        parser_parse_source(parser, sb.content);
+        parse(parser);
+    }
 
-    // sb_free(sb);
+}
+
+
+
+// returns wheter or not the input was handeld
+bool text_editor_recive_keyboard_input(Texteditor* ed, int32 key, int32 mods) {
+    switch (mods) {
+        case 0: switch (key) {
+            case GLFW_KEY_ENTER: insert(ed, '\n'); break;
+            case GLFW_KEY_BACKSPACE: delete(ed); break;
+            case GLFW_KEY_TAB: insert_tab(ed); break;
+
+            case GLFW_KEY_KP_7:
+            case GLFW_KEY_HOME: ed.cursor.column = 0; break;
+            case GLFW_KEY_KP_1:
+            case GLFW_KEY_END: ed.cursor.column = ed.cursor.line.sb.length as int32; break;
+
+            case GLFW_KEY_RIGHT: move_cursor(ed, 1); break;
+            case GLFW_KEY_LEFT: move_cursor(ed, -1); break;
+            case GLFW_KEY_DOWN: move_cursor_down(ed); break;
+            case GLFW_KEY_UP: move_cursor_up(ed); break;
+
+            case GLFW_KEY_PAGE_UP: {
+                int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
+                move_cursor_vertical(ed, -num_lines_on_page);
+            } break;
+            case GLFW_KEY_PAGE_DOWN: {
+                int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
+                move_cursor_vertical(ed, num_lines_on_page);
+            } break;
+        } break;
+
+
+        case GLFW_MOD_CONTROL: switch (key) {
+
+            case GLFW_KEY_RIGHT: jump_cursor(ed,  1); break;
+            case GLFW_KEY_LEFT:  jump_cursor(ed, -1); break;
+            case GLFW_KEY_DOWN: jump_cursor_vertical(ed, -1); break;
+            case GLFW_KEY_UP:   jump_cursor_vertical(ed,  1); break;
+
+            case GLFW_KEY_S: save_file(ed); break;
+        } break;
+
+        case GLFW_MOD_ALT: switch (key) {
+            case GLFW_KEY_DOWN: push_line_down(ed.cursor.line); break;
+            case GLFW_KEY_UP: push_line_up(ed.cursor.line); break;
+        } break;
+
+    }
+
+    return false;
 }
