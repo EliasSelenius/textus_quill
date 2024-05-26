@@ -5,15 +5,20 @@ ColorTheme* theme;
 ColorTheme theme_programer_art;
 ColorTheme theme_kimbie_dark;
 
-const keywords_count = 27;
-string* keywords;
+ProgLanguage[] languages;
+ProgLanguage language_mode;
 
+struct ProgLanguage {
+    string name;
+    string[] keywords;
+}
 
+// TODO: idea: interpolate color theme
 struct ColorTheme {
     Color background;
 
     // Tokens:
-    // Color whitespace;
+    // Color whitespace; // for when whitespace gets rendered
     Color word;
     Color keyword;
     Color punctuation;
@@ -23,46 +28,27 @@ struct ColorTheme {
     Color unknown;
 }
 
-void init_themes() {
+void init_languages() {
+    ProgLanguage pog_lang = {};
+    pog_lang.name = make_string("Pog");
 
-    { // init keywords
-        int32 i = 0;
-        keywords = malloc(keywords_count * sizeof string);
+    char*[] kw = {
+        "struct", "enum", "alloc", "let", "include", "if", "else", "while", "true", "false",
+        "and", "or", "null", "continue", "break", "return", "type", "as", "const",
+        "for", "switch", "default", "case", "goto", "with", "static", "sizeof"
+    };
 
-        keywords[i++] = make_string("struct");
-        keywords[i++] = make_string("enum");
-        keywords[i++] = make_string("alloc");
-        keywords[i++] = make_string("let");
-        keywords[i++] = make_string("include");
-        keywords[i++] = make_string("if");
-        keywords[i++] = make_string("else");
-        keywords[i++] = make_string("while");
-        keywords[i++] = make_string("true");
-        keywords[i++] = make_string("false");
-        keywords[i++] = make_string("and");
-        keywords[i++] = make_string("or");
-        keywords[i++] = make_string("null");
-        keywords[i++] = make_string("continue");
-        keywords[i++] = make_string("break");
-        keywords[i++] = make_string("return");
-        keywords[i++] = make_string("type");
-        keywords[i++] = make_string("as");
-        keywords[i++] = make_string("const");
-        keywords[i++] = make_string("for");
-        keywords[i++] = make_string("switch");
-        keywords[i++] = make_string("default");
-        keywords[i++] = make_string("case");
-        keywords[i++] = make_string("goto");
-        keywords[i++] = make_string("with");
-        keywords[i++] = make_string("static");
-        keywords[i++] = make_string("sizeof");
-
-        if i != keywords_count {
-            print("Something went wrong with keywords\n");
-            exit(-1);
-        }
+    pog_lang.keywords.data = malloc(kw.length * sizeof string);
+    pog_lang.keywords.length = kw.length;
+    for 0 .. kw.length {
+        pog_lang.keywords[it] = make_string(kw[it]);
     }
 
+    language_mode = pog_lang;
+
+}
+
+void init_themes() {
     theme_programer_art.background     = {12, 12, 12, 255} as Color;
     theme_programer_art.word           = Gray;
     theme_programer_art.keyword        = Purple;
@@ -93,12 +79,8 @@ void init_themes() {
 }
 
 
-void set_theme(ColorTheme* t) {
-    theme = t;
-
-    glClearColor(theme.background.r as float32 / 255,
-                 theme.background.g as float32 / 255,
-                 theme.background.b as float32 / 255,
-                 theme.background.a as float32 / 255);
+void set_theme(ColorTheme* new_theme) {
+    theme = new_theme;
+    set_clear_color(theme.background);
 }
 

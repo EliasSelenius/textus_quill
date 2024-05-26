@@ -279,7 +279,7 @@ Token get_next_token(char* start) {
 
         while is_word_char(start[++token.text.length]);
 
-        for i : 0 .. keywords_count if string_equals(token.text, keywords[i]) {
+        for i : 0 .. language_mode.keywords.length if string_equals(token.text, language_mode.keywords[i]) {
             token.kind = .keyword;
             break;
         }
@@ -386,7 +386,8 @@ void draw_texteditor(Texteditor* ed) {
         vec2 cursor_size = { ed.glyph_height * 0.5, ed.glyph_height };
         ed.cursor_pos = pos;
         ed.cursor_pos.x += ed.cursor.column * cursor_size.x;
-        draw_rect(ed.cursor_pos, cursor_size);
+        Color cursor_color = opacity(White, 0.4);
+        draw_rect(ed.cursor_pos, cursor_size, cursor_color);
         ed.cursor_pos = add(ed.cursor_pos, ed.view_pos);
 
         draw_texteditor_line(line, pos, ed.glyph_height, line_number);
@@ -394,7 +395,7 @@ void draw_texteditor(Texteditor* ed) {
         int32 lines_on_page = (2 / ed.glyph_height) as int32;
         vec2 line_pos = pos;
 
-        for i : 0 .. lines_on_page {
+        for uint32 i : 0 .. lines_on_page {
             line_pos.y += ed.glyph_height;
             if line.prev line = line.prev;
             else break;
@@ -404,7 +405,7 @@ void draw_texteditor(Texteditor* ed) {
         line_pos = pos;
         line = ed.cursor.line;
 
-        for i : 0 .. lines_on_page {
+        for uint32 i : 0 .. lines_on_page {
             line_pos.y -= ed.glyph_height;
             if line.next line = line.next;
             else break;

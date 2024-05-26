@@ -7,25 +7,29 @@ include "src/projects.pog";
 
 // Compile:
 // -O0 -g -fsanitize=address -fno-omit-frame-pointer
-// ../plang/bin/plang.exe main.pog cflags -g -lglfw3dll -l../plang/bin/pog_compiler
+// ..\plang\bin\plang.exe main.pog cflags -g -lglfw3dll -l..\plang\bin\pog_compiler
 
 
 /*
  !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~
 */
 
+
+/* Big Time Ideas:
+    - execution statistics: know which code paths are actually taken, how common they are, what errors may have occurred
+    - integrated REPL: entire type system and API of the currently loaded project is exposed to REPL
+*/
+
 /* TODO:
     - tokenize
         - string/char literals
     <Done> - saving files (existing and new files)
-    - text selection
-    - del key
-    - shift-del to delete line and put into clipboard
     <Done> - ctrl-jump horizontal
     <Done> - ctrl-jump vertical
     - rename file
     - builtin terminal
     - display binary file
+    - line color status in margin (is unsaved, is untracked addition for source controll)
 
     intelisense engine:
     - texteditor internal text format -> tokens for parser
@@ -33,8 +37,17 @@ include "src/projects.pog";
     - bind_units()
     - get list of errors to report instead of parser calling exit()
     - cleanup after a unit so that rebinding can take place (use arenas)
-*/
 
+    priority:
+        - view follow cursor horizontally, so cursor dont go off screen
+        - file navigator
+        - auto indentation when hit enter
+        - text selection
+        - backspace and delete should also work when ctrl jump is active
+        - del key
+        - shift-del to delete line and put into clipboard
+
+*/
 
 uint32 on_text_input_call_count = 0;
 
@@ -84,19 +97,13 @@ void on_drop(GLFWwindow* window, int32 path_count, char** paths) {
 
 void on_window_focus(GLFWwindow* window, int32 focused) {
     if focused {
-        // glfwSetWindowOpacity(window, 1);
+        glfwSetWindowOpacity(window, 1);
     } else {
-        // glfwSetWindowOpacity(window, 0.5);
+        glfwSetWindowOpacity(window, 0.8);
     }
 }
 
 int32 main() {
-
-    load_all_projects_in_folder("D:/Documents/repos");
-
-    insert_texteditor(texteditor_new());
-    open_text_file("src/text_editor.pog");
-
 
     grax_init();
     glfwSetCharCallback(main_window, on_text_input);
@@ -106,8 +113,12 @@ int32 main() {
 
 
     init_themes();
+    init_languages();
 
+    // load_all_projects_in_folder("D:/Documents/repos");
 
+    insert_texteditor(texteditor_new());
+    open_text_file("src/text_editor.pog");
 
     let files = get_all_files("src", false);
     for 0 .. list_length(files) {
