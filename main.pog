@@ -76,7 +76,8 @@ void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, i
 
     switch (mods) {
         case 0: switch (key) {
-            case GLFW_KEY_F11: toggle_fullscreen(main_window); break;
+            // TODO: we should make f11 toggle fullscren in grax
+            case GLFW_KEY_F11: toggle_fullscreen(app.main_window); break;
 
             case GLFW_KEY_ESCAPE: file_selector_open = false; break;
         } break;
@@ -116,10 +117,12 @@ void on_window_focus(GLFWwindow* window, int32 focused) {
 int32 main() {
 
     grax_init();
-    glfwSetCharCallback(main_window, on_text_input);
-    glfwSetKeyCallback(main_window, on_key_input);
-    glfwSetDropCallback(main_window, on_drop);
-    glfwSetWindowFocusCallback(main_window, on_window_focus);
+
+    // TODO: glfw callbacks should be in grax
+    glfwSetCharCallback(app.main_window, on_text_input);
+    glfwSetKeyCallback(app.main_window, on_key_input);
+    glfwSetDropCallback(app.main_window, on_drop);
+    glfwSetWindowFocusCallback(app.main_window, on_window_focus);
 
 
     init_themes();
@@ -159,7 +162,17 @@ int32 main() {
 
             draw_texteditor(*immediate_layer, active_editor);
 
-            active_editor.view_pos.y = lerp(0.1, active_editor.view_pos.y, active_editor.cursor_pos.y);
+            // active_editor.view_pos.y = lerp(0.1, active_editor.view_pos.y, active_editor.cursor_pos.y);
+
+            let target = active_editor.cursor_pos;
+            target.x += 1;
+            let pos = active_editor.view_pos;
+
+            // a = b + (a-b) * exp(-decay*dt)
+            float32 decay = 5;
+            float32 dt = app.frame_time;
+            active_editor.view_pos = add(target, mul(sub(pos, target), expf(-decay*dt)));
+
 
         } else draw_project_selection_menu();
 
