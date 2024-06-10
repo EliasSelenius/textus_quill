@@ -4,82 +4,72 @@ Texteditor* active_editor;
 // TODO: idea: there might be a per texteditor arena to hold all the lines
 
 struct Texteditor {
-
     string file_name;
 
     Texteditor* next;
     Texteditor* prev;
 
     vec2 view_pos;
-    vec2 cursor_pos;
+    vec2 target_view_pos;
 
-    Line* first_line;
-
+    Textbuffer buf;
     Cursor cursor;
-    Cursor selection_start;
+    bool follow_cursor;
 
     float32 glyph_height;
 }
 
-// struct Textbuffer {
-//     Line* first_line;
-// }
-
-struct Line {
-    StringBuilder sb;
-    Line* next;
-    Line* prev;
+void write(Texteditor* ed, string str) insert(*ed.buf, *ed.cursor, str);
+void write(Texteditor* ed, char c) {
+    ed.follow_cursor = true;
+    insert(*ed.buf, *ed.cursor, c);
 }
 
-struct Cursor {
-    Line* line;
-    int32 column;
-}
-
-void insert_texteditor(Texteditor* ed) {
-
-    if !active_editor {
-        active_editor = ed;
-        ed.next = ed;
-        ed.prev = ed;
-        return;
-    }
-
-    ed.next = active_editor.next;
-    ed.prev = active_editor;
-
-    if active_editor.next active_editor.next.prev = ed;
-    active_editor.next = ed;
-
-    active_editor = ed;
+vec2 calc_cursor_pos(Texteditor* ed) return calc_view_pos(ed, ed.cursor.row, ed.cursor.column);
+vec2 calc_view_pos(Texteditor* ed, uint32 row, col) {
+    vec2 size = { ed.glyph_height * 0.5, ed.glyph_height };
+    vec2 pos = {};
+    pos.x += col * size.x;
+    pos.y -= row * size.y;
+    return pos;
 }
 
 Texteditor* texteditor_new() {
     Texteditor* ed = malloc(sizeof Texteditor);
-
     ed.file_name = {null, 0};
-    ed.next = null;
-    ed.prev = null;
-
-    ed.first_line = line_new();
-    ed.cursor.line = ed.first_line;
-    ed.cursor.column = 0;
-    ed.selection_start = ed.cursor;
+    ed.buf = create_textbuffer();
+    ed.cursor = {};
     ed.glyph_height = 0.05;
-
     ed.view_pos = {1, 0};
+
+    if active_editor == null {
+        active_editor = ed;
+        ed.next = ed;
+        ed.prev = ed;
+    } else {
+        ed.next = active_editor.next;
+        ed.prev = active_editor;
+
+        if active_editor.next active_editor.next.prev = ed;
+        active_editor.next = ed;
+
+        active_editor = ed;
+    }
 
     return ed;
 }
 
+Texteditor* texteditor_open_file(char* file_name) {
+    let ed = texteditor_new();
+    ed.file_name = alloc_string_copy(file_name);
+    char* content = fileread(file_name);
+    textbuffer_init(*ed.buf, content);
+    free(content);
+    return ed;
+}
+
 void texteditor_free(Texteditor* ed) {
-    Line* line = ed.first_line;
-    while line {
-        sb_free(line.sb);
-        let fl = line;
-        line = line.next;
-        free(fl);
-    }
+    textbuffer_free(ed.buf);
 
     if ed.file_name.chars free(ed.file_name.chars);
 
@@ -94,175 +84,25 @@ void texteditor_free(Texteditor* ed) {
     free(ed);
 }
 
+void texteditor_save_file(Texteditor* ed) {
 
+    StringBuilder sb = sb_create();
+    textbuffer_to_string(*ed.buf, *sb);
 
+    let file_name = ed.file_name.chars ? ed.file_name.chars : "untitled.pog";
 
-Line* line_new() {
-    Line* line = malloc(sizeof Line);
-    line.sb = sb_create();
-    line.next = null;
-    line.prev = null;
+    print("SAVING: ", file_name, "\n");
+    print(sb.content, "\n\n");
+    filewrite(file_name, sb.content);
 
-    return line;
-}
-
-// returns the line that switched places with ln
-Line* push_line(Line* ln) {
-    let ln1 = ln.prev;
-    let ln2 = ln;
-    let ln3 = ln.next;
-    let ln4 = ln.next.next;
-
-    if ln1 ln1.next = ln3;
-    ln3.prev = ln1;
-
-    ln2.next = ln4;
-    if ln4 ln4.prev = ln2;
-
-    ln3.next = ln2;
-    ln2.prev = ln3;
-
-    return ln3;
-}
-
-void push_line_down(Line* ln) {
-    if !ln.next return;
-
-    ln = push_line(ln);
-    if active_editor if ln.prev == null active_editor.first_line = ln; // TODO: hardcoded to active_editor
-}
-
-void push_line_up(Line* ln) {
-    if !ln.prev return;
-    push_line(ln.prev);
-    if active_editor if ln.prev == null active_editor.first_line = ln; // TODO: hardcoded to active_editor
-}
-
-
-
-void clamp_cursor_column(Cursor* cursor) {
-    cursor.column = clamp(cursor.column, 0, cursor.line.sb.length as int32);
-}
-
-// returns true if cursor moved
-bool move_cursor(Cursor* cursor, int32 m) {
-    let old_loc = cursor.column;
-    cursor.column += m;
-    clamp_cursor_column(cursor);
-    return cursor.column != old_loc;
-}
-
-void move_cursor_up(Cursor* cursor) {
-    if cursor.line.prev == null  return;
-
-    cursor.line = cursor.line.prev;
-    clamp_cursor_column(cursor);
-}
-
-void move_cursor_down(Cursor* cursor) {
-    if cursor.line.next == null  return;
-
-    cursor.line = cursor.line.next;
-    clamp_cursor_column(cursor);
-}
-
-void move_cursor_vertical(Cursor* cursor, int32 steps) {
-    let ln = cursor.line;
-
-    if steps < 0 while ln.prev and steps++ < 0  ln = ln.prev;
-    else         while ln.next and steps-- > 0  ln = ln.next;
-
-    cursor.line = ln;
-    clamp_cursor_column(cursor);
-}
-
-void jump_cursor(Cursor* cursor, int32 dir) {
-    char* cont = cursor.line.sb.content;
-    int32 offset = clamp(dir, -1, 0);
-
-    while is_whitespace_or_null(cont[cursor.column + offset]) and move_cursor(cursor, dir);
-    while is_punctuation       (cont[cursor.column + offset]) and move_cursor(cursor, dir);
-    while is_alphanumeric      (cont[cursor.column + offset]) and move_cursor(cursor, dir);
-}
-
-void jump_cursor_vertical(Cursor* cursor, int32 dir) {
-    Line* ln = cursor.line;
-
-    if dir == -1 {
-        while ln.next and is_whitespace_or_empty(to_string(ln.sb)) ln = ln.next;
-        while ln.next and !is_whitespace_or_empty(to_string(ln.sb)) ln = ln.next;
-    } else {
-        while ln.prev and is_whitespace_or_empty(to_string(ln.sb)) ln = ln.prev;
-        while ln.prev and !is_whitespace_or_empty(to_string(ln.sb)) ln = ln.prev;
+    { // parser test
+        let parser = init_parser();
+        parser_parse_source(parser, sb.content);
+        parse(parser);
     }
 
-    cursor.line = ln;
-    clamp_cursor_column(cursor);
+    sb_free(sb);
 }
-
-
-void insert(Cursor* cursor, char c) {
-    if c == '\n' {
-        let line = line_new();
-
-        let rest = *cursor.line.sb.content[cursor.column];
-        sb_append(*line.sb, rest);
-
-        cursor.line.sb.length = cursor.column as uint32;
-        cursor.line.sb.content[cursor.line.sb.length] = 0 as char;
-
-        // inserting line
-        line.next = cursor.line.next;
-        line.prev = cursor.line;
-        if cursor.line.next  cursor.line.next.prev = line;
-        cursor.line.next = line;
-
-        cursor.line = line;
-        cursor.column = 0;
-        return;
-    }
-
-    string str = {*c, 1};
-    sb_insert(*cursor.line.sb, cursor.column++, str);
-}
-
-void insert_tab(Cursor* cursor) {
-    string str = make_string("    "); // TODO: hardcoded tabs to be 4 spaces
-    sb_insert(*cursor.line.sb, cursor.column, str);
-    cursor.column += str.length as int32;
-}
-
-void delete_forward(Cursor* cursor) {
-    if cursor.column != cursor.line.sb.length {
-        sb_remove(*cursor.line.sb, cursor.column, 1);
-        return;
-    }
-}
-
-void delete_backward(Cursor* cursor) {
-    if cursor.column {
-        sb_remove(*cursor.line.sb, --cursor.column, 1);
-        return;
-    }
-
-    Line* del = cursor.line;
-    Line* prev = del.prev;
-    Line* next = del.next;
-
-    if prev == null  return;
-
-    prev.next = next;
-    if next  next.prev = prev;
-
-    cursor.column = prev.sb.length as int32;
-    cursor.line = prev;
-
-    sb_append(*prev.sb, del.sb.content);
-
-    sb_free(del.sb);
-    free(del);
-}
-
 
 
 
@@ -356,90 +196,44 @@ Token get_next_token(char* start) {
 }
 
 
-
-void draw_texteditor_line(RenderLayer* layer, Line* line, vec2 pos, float32 height, uint32 line_number) {
-
+void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, float32 height, uint32 line_number) {
     vec2 line_num_pos = pos;
     line_num_pos.x -= height * 2;
     text_backwards(layer, line_num_pos, height * 0.7, to_string(line_number), Gray);
 
-    // print("Start of Line:\n");
     uint32 i = 0;
     while i < line.sb.length {
         let token = get_next_token(*line.sb.content[i]);
-        // print("    ", token.kind as int32, " ", token.text.chars, " ", token.text.length, "\n");
-
-        Color color = White;
-
-
-        switch token.kind {
-            // case .whitespace:     color = theme.whitespace; break;
-            case .word:           color = theme.word; break;
-            case .keyword:        color = theme.keyword; break;
-            case .punctuation:    color = theme.punctuation; break;
-            case .number_literal: color = theme.number_literal; break;
-            case .string_literal: color = theme.string_literal; break;
-            case .comment:        color = theme.comment; break;
-            case .unknown:        color = theme.unknown; break;
-        }
-
-        pos = text(layer, pos, height, token.text, color);
-
+        pos = text(layer, pos, height, token.text, token_color(token.kind));
         i += token.text.length;
     }
-
-    // draw_text(pos, height, line.sb.content);
 }
 
 void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
 
-    { // draw contents
-        vec2 pos = neg(ed.view_pos);
-        uint32 line_number = 1;
+    vec2 start = neg(ed.view_pos);
+    let pos = start;
 
-        // count lines up until cursor
-        Line* line = ed.first_line;
-        while line != ed.cursor.line {
-            pos.y -= ed.glyph_height;
+    // TODO: calculate the range of lines visible on screen
+    for uint32 it : 0 .. list_length(ed.buf.lines) {
+        draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, it + 1);
 
-            line = line.next;
-            line_number++;
-        }
-
-        // draw cursor
-        vec2 cursor_size = { ed.glyph_height * 0.5, ed.glyph_height };
-        ed.cursor_pos = pos;
-        ed.cursor_pos.x += ed.cursor.column * cursor_size.x;
-        Color cursor_color = opacity(White, 0.4);
-        rect(layer, ed.cursor_pos, cursor_size, cursor_color);
-        ed.cursor_pos = add(ed.cursor_pos, ed.view_pos);
-
-        draw_texteditor_line(layer, line, pos, ed.glyph_height, line_number);
-
-        int32 lines_on_page = (2 / ed.glyph_height) as int32;
-        vec2 line_pos = pos;
-
-        for uint32 i : 0 .. lines_on_page {
-            line_pos.y += ed.glyph_height;
-            if line.prev line = line.prev;
-            else break;
-            draw_texteditor_line(layer, line, line_pos, ed.glyph_height, (line_number - i - 1) as uint32);
-        }
-
-        line_pos = pos;
-        line = ed.cursor.line;
-
-        for uint32 i : 0 .. lines_on_page {
-            line_pos.y -= ed.glyph_height;
-            if line.next line = line.next;
-            else break;
-            draw_texteditor_line(layer, line, line_pos, ed.glyph_height, (line_number + i + 1) as uint32);
-        }
+        pos.y -= ed.glyph_height;
+        pos.x = start.x;
     }
+
+
+    // draw cursor
+    vec2 cursor_size = { ed.glyph_height * 0.5, ed.glyph_height };
+    Color cursor_color = opacity(White, 0.4);
+    rect(layer, sub(calc_cursor_pos(ed), ed.view_pos), cursor_size, cursor_color);
+
 
     { // draw tabs:
         const tab_text_height = 0.05;
-        vec2 pos = { -1.5, 1 - tab_text_height * 0.5 };
+        vec2 pos = app.top_left;
+        pos.y -= tab_text_height * 0.5;
+        pos.x += tab_text_height * 0.5;
         let current_ed = ed;
         loop: {
             char* name = current_ed.file_name.chars ? current_ed.file_name.chars : "untitled";
@@ -453,120 +247,29 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
     }
 }
 
-Texteditor* open_text_file(char* file_name) {
-
-    let ed = texteditor_new();
-    insert_texteditor(ed);
-    ed.file_name = alloc_string_copy(file_name);
-
-    char* buffer = fileread(file_name);
-    char* current = buffer;
-    char* start_of_line = current;
-
-    let line = ed.first_line;
-
-    while @current {
-        if @current == '\n' {
-            sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
-            start_of_line = (current as uint64 + 1) as char*;
-
-            let l = line_new();
-            l.prev = line;
-            line.next = l;
-            line = l;
-        }
-        current++;
-    }
-
-    sb_append(*line.sb, { start_of_line, (current - start_of_line) as uint32 } as string);
-
-    free(buffer);
-    return ed;
-}
-
-void save_file(Texteditor* ed) {
-
-    static StringBuilder sb = sb_create();
-    sb_clear(*sb);
-
-    let line = ed.first_line;
-    while line {
-        sb_append(*sb, line.sb.content);
-        sb_append(*sb, "\n");
-        line = line.next;
-    }
-    sb_remove(*sb, (sb.length - 1) as int32, 1); // remove trailing '\n'
-
-    let file_name = ed.file_name.chars ? ed.file_name.chars : "untitled.pog";
-
-    print("SAVING: ", file_name, "\n");
-    print(sb.content, "\n\n");
-    filewrite(file_name, sb.content);
-
-    { // parser test
-        let parser = init_parser();
-        parser_parse_source(parser, sb.content);
-        parse(parser);
-    }
-
-}
-
-
-
 void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {
 
-    perform_cursor_operation(*ed.cursor, key, mods);
+    ed.follow_cursor = true;
+
+    perform_cursor_operation(*ed.buf, *ed.cursor, key, mods);
 
     switch (mods) {
         case 0: switch (key) {
             case GLFW_KEY_PAGE_UP: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
-                move_cursor_vertical(*ed.cursor, -num_lines_on_page);
+                move_cursor_vertical(*ed.buf, *ed.cursor, -num_lines_on_page);
             } break;
             case GLFW_KEY_PAGE_DOWN: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
-                move_cursor_vertical(*ed.cursor, num_lines_on_page);
+                move_cursor_vertical(*ed.buf, *ed.cursor, num_lines_on_page);
             } break;
         } break;
 
         case GLFW_MOD_CONTROL: switch (key) {
-            case GLFW_KEY_S: save_file(ed); break;
+            case GLFW_KEY_S: texteditor_save_file(ed); break;
         } break;
 
         case GLFW_MOD_ALT: switch (key) {
-        } break;
-    }
-}
-
-void perform_cursor_operation(Cursor* cursor, int32 key, mods) {
-    switch (mods) {
-        case 0: switch (key) {
-            case GLFW_KEY_ENTER:     insert(cursor, '\n'); break;
-            case GLFW_KEY_TAB:       insert_tab(cursor); break;
-            case GLFW_KEY_BACKSPACE: delete_backward(cursor); break;
-            case GLFW_KEY_DELETE:    delete_forward(cursor); break;
-
-            case GLFW_KEY_KP_7:
-            case GLFW_KEY_HOME: cursor.column = 0; break;
-            case GLFW_KEY_KP_1:
-            case GLFW_KEY_END:  cursor.column = cursor.line.sb.length as int32; break;
-
-            case GLFW_KEY_RIGHT: move_cursor(cursor, 1); break;
-            case GLFW_KEY_LEFT:  move_cursor(cursor, -1); break;
-            case GLFW_KEY_DOWN:  move_cursor_down(cursor); break;
-            case GLFW_KEY_UP:    move_cursor_up(cursor); break;
-        } break;
-
-        case GLFW_MOD_CONTROL: switch (key) {
-            case GLFW_KEY_RIGHT: jump_cursor(cursor,  1); break;
-            case GLFW_KEY_LEFT:  jump_cursor(cursor, -1); break;
-            case GLFW_KEY_DOWN:  jump_cursor_vertical(cursor, -1); break;
-            case GLFW_KEY_UP:    jump_cursor_vertical(cursor,  1); break;
-        } break;
-
-        case GLFW_MOD_ALT: switch (key) {
-            case GLFW_KEY_DOWN: push_line_down(cursor.line); break;
-            case GLFW_KEY_UP:   push_line_up(cursor.line); break;
         } break;
     }
 }

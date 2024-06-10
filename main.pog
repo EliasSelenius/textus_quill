@@ -2,6 +2,7 @@
 include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
 include "src/text_editor.pog";
+include "src/textbuffer.pog";
 include "src/theme.pog";
 include "src/projects.pog";
 
@@ -30,157 +31,214 @@ include "src/projects.pog";
     - texteditor internal text format -> tokens for parser
     - parse_unit()
     - bind_units()
-    - get list of errors to report instead of parser calling exit()
     - cleanup after a unit so that rebinding can take place (use arenas)
 
+    - measure words per minute
+
     priority:
-        - view follow cursor horizontally, so cursor dont go off screen
         - file navigator
         - auto indentation when hit enter
         - text selection
         - backspace and delete should also work when ctrl jump is active
-        - del key
         - shift-del to delete line and put into clipboard
 
 */
 
+// TODO: this immediate mode text input idea should be in grax
 uint32 on_text_input_call_count = 0;
-
 char* text_input_this_frame = malloc(128);
 
-void on_text_input(GLFWwindow* w, uint32 codepoint) {
-    char c = codepoint as char;
-    // print("codepoint: ", codepoint, "\n");
 
-    if file_selector_open {
-        insert(*path_cursor, c);
-    } else if active_editor {
-        insert(*active_editor.cursor, c);
-    }
+void on_event(AppEvent event, AppEventData data) switch (event) {
+    case .file_drop: {
+        glfwFocusWindow(app.main_window);
 
-    text_input_this_frame[on_text_input_call_count++] = c;
-}
+        for i : 0 .. data.files.length {
+            let ed = texteditor_open_file(data.files[i]);
+        }
+    } break;
 
-
-void on_key_input(GLFWwindow* window, int32 key, int32 scancode, int32 action, int32 mods) {
-
-    if action == GLFW_RELEASE return;
-
-    if file_selector_open {
-        perform_cursor_operation(*path_cursor, key, mods);
-    } else if active_editor {
-        text_editor_recive_keyboard_input(active_editor, key, mods);
-    }
+    case .key_repeat:
+    case .key_press: {
+        // print("[INFO]: \"", glfwGetKeyName(GLFW_KEY_UNKNOWN, data.scancode), "\" scancode: ", data.scancode, "\n");
 
 
+        if file_selector.open {
+            // perform_cursor_operation(*path_cursor, data.key, data.mods);
+        } else if active_editor {
+            text_editor_recive_keyboard_input(active_editor, data.key, data.mods);
+        }
 
-    switch (mods) {
-        case 0: switch (key) {
-            // TODO: we should make f11 toggle fullscren in grax
-            case GLFW_KEY_F11: toggle_fullscreen(app.main_window); break;
+        switch (data.mods) {
+            case 0: switch (data.key) {
+                case GLFW_KEY_ESCAPE: file_selector.open = false; break;
+            } break;
 
-            case GLFW_KEY_ESCAPE: file_selector_open = false; break;
-        } break;
+            case GLFW_MOD_CONTROL: switch (data.key) {
+                case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
+                case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
 
-        case GLFW_MOD_CONTROL: switch (key) {
-            case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
-            case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
+                case GLFW_KEY_P: file_selector.open = true; break;
 
-            case GLFW_KEY_P: file_selector_open = true; break;
+                case GLFW_KEY_T: {
+                    ColorTheme*[] themes = {
+                        *theme_kimbie_dark,
+                        *theme_programer_art
+                    };
 
-            case GLFW_KEY_N: insert_texteditor(texteditor_new()); break;
-            case GLFW_KEY_W: texteditor_free(active_editor); break;
-        } break;
+                    static uint32 i = 0;
+                    set_theme(themes[i++ % themes.length]);
+                } break;
 
-        case GLFW_MOD_ALT: switch (key) {
-        } break;
-    }
-}
+                case GLFW_KEY_N: texteditor_new(); break;
+                case GLFW_KEY_W: texteditor_free(active_editor); break;
+            } break;
 
-void on_drop(GLFWwindow* window, int32 path_count, char** paths) {
+            case GLFW_MOD_ALT: switch (data.key) {
+            } break;
+        }
+    } break;
 
-    glfwFocusWindow(window);
+    case .text_input: {
+        char c = '?';
+        if data.unicode_codepoint <= 127 {
+            c = data.unicode_codepoint as char;
+        } else {
+            print("[ERROR]: Unicode character ", to_string(data.unicode_codepoint), " not supported.\n");
+        }
 
-    for i : 0 .. path_count {
-        let ed = open_text_file(paths[i]);
-    }
-}
 
-void on_window_focus(GLFWwindow* window, int32 focused) {
-    if focused {
-        // glfwSetWindowOpacity(window, 1);
-    } else {
-        // glfwSetWindowOpacity(window, 0.8);
-    }
+        if file_selector.open {
+            insert(*file_selector.buf, *file_selector.cursor, c);
+        } else if active_editor {
+            write(active_editor, c);
+        }
+
+        text_input_this_frame[on_text_input_call_count++] = c;
+    } break;
+
+    default: break;
 }
 
 int32 main() {
 
     grax_init();
-
-    // TODO: glfw callbacks should be in grax
-    glfwSetCharCallback(app.main_window, on_text_input);
-    glfwSetKeyCallback(app.main_window, on_key_input);
-    glfwSetDropCallback(app.main_window, on_drop);
-    glfwSetWindowFocusCallback(app.main_window, on_window_focus);
-
+    app.on_event = on_event;
 
     init_themes();
     init_languages();
 
-    // load_all_projects_in_folder("D:/Documents/repos");
+    texteditor_new();
+    texteditor_open_file("src/textbuffer.pog");
 
-    insert_texteditor(texteditor_new());
-    open_text_file("src/text_editor.pog");
+    load_all_projects_in_folder("D:/Documents/repos");
 
-    file_selector_layer = create_layer();
-    immediate_layer.next_layer = *file_selector_layer;
 
-    path_cursor.line = line_new();
-    path_cursor.column = 0;
+    {
+        let controls = texteditor_new();
+        write(controls, make_string("\n\n"));
+        write(controls, make_string("// Drag and drop files into this window to view and edit them\n\n\n"));
 
-    update_files();
+        write(controls, make_string("// Ctrl+N               --  New text buffer.\n"));
+        write(controls, make_string("// Ctrl+S               --  Save text buffer.\n"));
+        write(controls, make_string("// Ctrl+W               --  Close text buffer.\n"));
+        write(controls, make_string("// Ctrl+page_up/down    --  Cycle text buffers.\n"));
+        write(controls, make_string("// Ctrl+P               --  Blue screen your computer.\n"));
+        write(controls, make_string("// Ctrl+arrow_keys      --  Jump over text.\n"));
+        write(controls, make_string("// Alt+up/down          --  Move line up/down.\n"));
+        write(controls, make_string("// Ctrl+\"-\"             --  Zoom out.\n"));
+        write(controls, make_string("// Ctrl+\"=\"             --  Zoom in. I guess this only works on english keyboard layout, opsie.\n"));
+        write(controls, make_string("// F11                  --  Toggle fullscreen mode.\n"));
+        write(controls, make_string("// Ctrl+T               --  Change color theme.\n"));
+
+        write(controls, make_string("\n\n"));
+        write(controls, make_string("// Cycle to the next text buffer to see the source code for the editor viewed in itself.\n\n"));
+    }
+
+
+    {
+        file_selector.layer = create_layer();
+        immediate_layer.next_layer = *file_selector.layer;
+
+        update_files();
+    }
 
     while grax_loop() {
 
-        // if key(GLFW_KEY_UP) view_pos.y += 0.1;
-        // if key(GLFW_KEY_DOWN) view_pos.y -= 0.1;
+        { // calc theme
 
-        if key(GLFW_KEY_LEFT_CONTROL) {
-            if key('-') {
-                active_editor.glyph_height *= 0.9;
-                active_editor.view_pos.y = active_editor.cursor_pos.y * 0.9;
-            } else if key('=') {
-                active_editor.glyph_height *= 1.1;
-                active_editor.view_pos.y = active_editor.cursor_pos.y * 1.1;
-            }
+            Color lerp(Color a, b, float32 t) return {
+                a.r + (b.r-a.r)*t,
+                a.g + (b.g-a.g)*t,
+                a.b + (b.b-a.b)*t,
+                a.a + (b.a-a.a)*t
+            };
+
+
+            let t = min(1.0, theme_lerp_factor);
+            theme_lerp_factor += deltatime();
+
+            theme.background     = lerp(prev_theme.background,     next_theme.background, t);
+            theme.whitespace     = lerp(prev_theme.whitespace,     next_theme.whitespace, t);
+            theme.word           = lerp(prev_theme.word,           next_theme.word, t);
+            theme.keyword        = lerp(prev_theme.keyword,        next_theme.keyword, t);
+            theme.punctuation    = lerp(prev_theme.punctuation,    next_theme.punctuation, t);
+            theme.number_literal = lerp(prev_theme.number_literal, next_theme.number_literal, t);
+            theme.string_literal = lerp(prev_theme.string_literal, next_theme.string_literal, t);
+            theme.comment        = lerp(prev_theme.comment,        next_theme.comment, t);
+            theme.unknown        = lerp(prev_theme.unknown,        next_theme.unknown, t);
+
+            set_clear_color(theme.background);
         }
 
 
-        if active_editor {
-            active_editor.view_pos.y += mouse_scroll * 0.1;
+        let ed = active_editor;
+        if ed {
 
-            draw_texteditor(*immediate_layer, active_editor);
+            void zoom(Texteditor* ed, float32 zoom) {
+                const speed = 0.05;
+                ed.glyph_height *= 1.0 + speed*zoom;
+                ed.view_pos.y   *= 1.0 + speed*zoom;
+            }
 
-            // active_editor.view_pos.y = lerp(0.1, active_editor.view_pos.y, active_editor.cursor_pos.y);
+            if key(GLFW_KEY_LEFT_CONTROL) {
+                zoom(ed, input_axis('-', '='));
+            }
 
-            let target = active_editor.cursor_pos;
-            target.x += 1;
-            let pos = active_editor.view_pos;
+            if mouse_scroll != 0.0 {
+                if key(GLFW_KEY_LEFT_CONTROL) {
+                    zoom(ed, mouse_scroll);
+                } else {
+                    ed.target_view_pos.y += mouse_scroll * 0.1;
+                    ed.follow_cursor = false;
+                }
+            }
 
-            // a = b + (a-b) * exp(-decay*dt)
+
+            if ed.follow_cursor {
+                ed.target_view_pos = calc_cursor_pos(ed);
+            }
+
+            float32 exp_decay(float32 a, b, decay, dt) return b + (a-b) * expf(-decay*dt);
             float32 decay = 5;
-            float32 dt = app.frame_time;
-            active_editor.view_pos = add(target, mul(sub(pos, target), expf(-decay*dt)));
+            ed.view_pos.y = exp_decay(ed.view_pos.y, ed.target_view_pos.y, decay, deltatime());
+
+            let p = sub(ed.target_view_pos, ed.view_pos);
+            if abs(p.x) > 1  ed.view_pos.x = exp_decay(ed.view_pos.x, ed.target_view_pos.x, 1, deltatime());
+
+            draw_texteditor(*immediate_layer, ed);
 
 
         } else draw_project_selection_menu();
 
-        if file_selector_open {
-            render_file_selection_menu(*file_selector_layer);
+        if file_selector.open {
+            render_file_selection_menu(*file_selector.layer);
         }
 
 
+        // const border_thickness = 0.005;
+        // draw_rect(make_vec(-1, 0), make_vec(border_thickness, 2), Red);
+        // draw_rect(make_vec(1, 0), make_vec(border_thickness, 2), Red);
 
         text_input_this_frame[on_text_input_call_count] = 0;
         // if on_text_input_call_count != 0 print("\"", text_input_this_frame, "\"\n");
@@ -190,18 +248,24 @@ int32 main() {
     return 0;
 }
 
-RenderLayer file_selector_layer;
-bool file_selector_open = false;
-FileInfo* current_files; // list
-Cursor path_cursor;
 
+struct FileSelectorPanel {
+    RenderLayer layer;
+    FileInfo* current_files; // list
+    bool open;
+
+    Textbuffer buf;
+    Cursor cursor;
+}
+
+FileSelectorPanel file_selector;
 
 void update_files() {
-    if current_files list_delete(current_files);
+    if file_selector.current_files list_delete(file_selector.current_files);
 
-    current_files = get_all_files("src", false);
-    for 0 .. list_length(current_files) {
-        print(current_files[it], "\n");
+    file_selector.current_files = get_all_files("src", false);
+    for 0 .. list_length(file_selector.current_files) {
+        print(file_selector.current_files[it], "\n");
     }
 }
 
@@ -209,13 +273,13 @@ void render_file_selection_menu(RenderLayer* layer) {
     vec2 size = make_vec(1.5, 1.8);
     vec2 path_start = { -size.x / 2, size.y / 2 };
     rect(layer, vec2_zero, size, Blue);
-    text(layer, path_start, 0.08, to_string(path_cursor.line.sb), White);
+    // text(layer, path_start, 0.08, to_string(path_cursor.line.sb), White);
 
 
     const glyph_height = 0.08;
     vec2 list_pos = add(path_start, make_vec(0.1, - 0.1));
-    for 0 .. list_length(current_files) {
-        text(layer, list_pos, glyph_height, current_files[it].path, White);
+    for 0 .. list_length(file_selector.current_files) {
+        text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
         list_pos.y -= glyph_height * 2;
     }
 }

@@ -1,6 +1,10 @@
 
 
-ColorTheme* theme;
+ColorTheme theme;
+
+float32 theme_lerp_factor;
+ColorTheme* prev_theme;
+ColorTheme* next_theme;
 
 ColorTheme theme_programer_art;
 ColorTheme theme_kimbie_dark;
@@ -18,7 +22,7 @@ struct ColorTheme {
     Color background;
 
     // Tokens:
-    // Color whitespace; // for when whitespace gets rendered
+    Color whitespace; // for when whitespace gets rendered
     Color word;
     Color keyword;
     Color punctuation;
@@ -26,6 +30,18 @@ struct ColorTheme {
     Color string_literal;
     Color comment;
     Color unknown;
+}
+
+Color token_color(Tokenkind kind) switch kind {
+    case .whitespace:     return theme.whitespace;
+    case .word:           return theme.word;
+    case .keyword:        return theme.keyword;
+    case .punctuation:    return theme.punctuation;
+    case .number_literal: return theme.number_literal;
+    case .string_literal: return theme.string_literal;
+    case .comment:        return theme.comment;
+    case .unknown:        return theme.unknown;
+    default: return White;
 }
 
 void init_languages() {
@@ -50,6 +66,7 @@ void init_languages() {
 
 void init_themes() {
     theme_programer_art.background     = {12, 12, 12, 255} as Color;
+    theme_programer_art.whitespace     = White;
     theme_programer_art.word           = Gray;
     theme_programer_art.keyword        = Purple;
     theme_programer_art.punctuation    = White;
@@ -66,6 +83,7 @@ void init_themes() {
         #7E602C	Regex, escape characters, attributes and preprocessors
     */
     theme_kimbie_dark.background     = rgba(0x221A0FFF);
+    theme_kimbie_dark.whitespace     = White;
     theme_kimbie_dark.word           = rgba(0xDC3958FF); // blue: rgba(0x8AB1B0FF);
     theme_kimbie_dark.keyword        = rgba(0x98676AFF);
     theme_kimbie_dark.punctuation    = rgba(0xD3AF86FF);
@@ -80,7 +98,8 @@ void init_themes() {
 
 
 void set_theme(ColorTheme* new_theme) {
-    theme = new_theme;
-    set_clear_color(theme.background);
+    prev_theme = next_theme ? next_theme : new_theme;
+    next_theme = new_theme;
+    theme_lerp_factor = 0;
 }
 

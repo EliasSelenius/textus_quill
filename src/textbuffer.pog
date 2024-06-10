@@ -1,0 +1,260 @@
+
+struct Textbuffer {
+    TextbufferLine* lines; // list
+}
+
+struct TextbufferLine {
+    StringBuilder sb;
+}
+
+struct Cursor {
+    uint32 row, column;
+}
+
+StringBuilder* get_string_builder(Textbuffer* buf, uint32 row) { return *buf.lines[row].sb; }
+uint32 last_row(Textbuffer* buf) { return list_length(buf.lines) - 1; }
+
+Textbuffer create_textbuffer() {
+    Textbuffer tb = {};
+    tb.lines = list_create(sizeof TextbufferLine);
+    insert_new_line(*tb, 0);
+    return tb;
+}
+
+void textbuffer_free(Textbuffer buf) {
+    let len = list_length(buf.lines);
+    for 0 .. len  sb_free(buf.lines[it].sb);
+
+    list_delete(buf.lines);
+}
+
+Textbuffer create_textbuffer(char* buffer) {
+    Textbuffer buf = create_textbuffer();
+    textbuffer_init(*buf, buffer);
+    return buf;
+}
+
+void textbuffer_init(Textbuffer* buf, char* current) {
+    char* start_of_line = current;
+
+    TextbufferLine* line = buf.lines;
+    uint32 row = 0;
+
+    while @current {
+        if @current == '\n' {
+            string insertion = { start_of_line, (current - start_of_line) as uint32 };
+            sb_append(*line.sb, insertion);
+            start_of_line = (current as uint64 + 1) as char*;
+
+            line = insert_new_line(buf, ++row);
+        }
+        current++;
+    }
+
+    string insertion = { start_of_line, (current - start_of_line) as uint32 };
+    sb_append(*line.sb, insertion);
+}
+
+void textbuffer_to_string(Textbuffer* buf, StringBuilder* sb) {
+    for 0 .. list_length(buf.lines) {
+        sb_append(sb, buf.lines[it].sb.content);
+        sb_append(sb, "\n");
+    }
+    sb_remove(sb, sb.length - 1, 1); // remove trailing '\n'
+}
+
+
+bool swap_lines(Textbuffer* buf, uint32 row1, row2) {
+    let len = list_length(buf.lines);
+    if row1 >= len or row2 >= len  return false;
+
+    let line = buf.lines[row1];
+    buf.lines[row1] = buf.lines[row2];
+    buf.lines[row2] = line;
+    return true;
+}
+
+void push_line_down(Textbuffer* buf, Cursor* cursor) { if swap_lines(buf, cursor.row, cursor.row+1) cursor.row++; }
+void push_line_up  (Textbuffer* buf, Cursor* cursor) { if swap_lines(buf, cursor.row, cursor.row-1) cursor.row--; }
+
+
+
+void clamp_cursor_column(Textbuffer* buf, Cursor* cursor) {
+    let line_len = buf.lines[cursor.row].sb.length;
+    if cursor.column > line_len {
+        cursor.column = line_len;
+    }
+
+    // cursor.column = clamp(cursor.column, 0, buf.lines[cursor.row].sb.length);
+}
+
+// returns true if cursor moved
+bool move_cursor(Textbuffer* buf, Cursor* cursor, int32 m) {
+    if m == -1 and cursor.column == 0 return false; // unsigned underflow
+
+    let old_loc = cursor.column;
+    cursor.column += m;
+    clamp_cursor_column(buf, cursor);
+    return cursor.column != old_loc;
+}
+
+void jump_cursor(Textbuffer* buf, Cursor* cursor, int32 dir) {
+    char* cont = get_string_builder(buf, cursor.row).content;
+    int32 offset = clamp(dir, -1, 0);
+
+    if dir == -1 and cursor.column == 0  return;
+
+    while is_whitespace_or_null(cont[cursor.column + offset]) and move_cursor(buf, cursor, dir) if cursor.column == 0 return;
+    while is_punctuation       (cont[cursor.column + offset]) and move_cursor(buf, cursor, dir) if cursor.column == 0 return;
+    while is_alphanumeric      (cont[cursor.column + offset]) and move_cursor(buf, cursor, dir) if cursor.column == 0 return;
+}
+
+uint32 clamp_row(Textbuffer* buf, int32 row) {
+    if row < 0 return 0;
+    if row >= list_length(buf.lines) return last_row(buf);
+    return row as uint32;
+}
+
+void move_cursor_vertical(Textbuffer* buf, Cursor* cursor, int32 steps) {
+    cursor.row = clamp_row(buf, cursor.row + steps);
+    clamp_cursor_column(buf, cursor);
+}
+
+void jump_cursor_vertical(Textbuffer* buf, Cursor* cursor, int32 dir) {
+    int32 len = list_length(buf.lines) - 1;
+    int32 row = cursor.row as int32;
+
+    while 0 <= row and row <= len and is_whitespace_or_empty(to_string(buf.lines[row].sb)) row += dir;
+    while 0 <= row and row <= len and !is_whitespace_or_empty(to_string(buf.lines[row].sb)) row += dir;
+
+    cursor.row = clamp_row(buf, row);
+    clamp_cursor_column(buf, cursor);
+}
+
+
+
+
+TextbufferLine* insert_new_line(Textbuffer* buf, uint32 row) {
+    TextbufferLine line = {};
+    line.sb = sb_create();
+    return list_insert(*buf.lines, row, *line) as TextbufferLine*;
+}
+
+void insert(Textbuffer* buf, Cursor* cursor, string str) for 0 .. str.length  insert(buf, cursor, str.chars[it]);
+void insert(Textbuffer* buf, Cursor* cursor, char c) {
+    if c == '\n' {
+        let line = insert_new_line(buf, cursor.row + 1);
+        let sb = get_string_builder(buf, cursor.row);
+
+        let rest = *sb.content[cursor.column];
+        sb_append(*line.sb, rest);
+
+        sb.length = cursor.column;
+        sb.content[sb.length] = 0 as char;
+
+        cursor.row += 1;
+        cursor.column = 0;
+        return;
+    }
+
+    string str = {*c, 1};
+    sb_insert(get_string_builder(buf, cursor.row), cursor.column++, str);
+}
+
+void insert_tab(Textbuffer* buf, Cursor* cursor) {
+    string str = make_string("    "); // TODO: hardcoded tabs to be 4 spaces
+    sb_insert(get_string_builder(buf, cursor.row), cursor.column, str);
+    cursor.column += str.length;
+}
+
+void delete_forward(Textbuffer* buf, Cursor* cursor) {
+    let sb = get_string_builder(buf, cursor.row);
+    if cursor.column != sb.length {
+        sb_remove(sb, cursor.column, 1);
+        return;
+    }
+
+    let del = get_string_builder(buf, cursor.row + 1);
+    sb_append(sb, del.content);
+    sb_free(@del);
+    list_ordered_remove(buf.lines, cursor.row + 1);
+}
+
+void delete_backward(Textbuffer* buf, Cursor* cursor) {
+    if cursor.column {
+        sb_remove(get_string_builder(buf, cursor.row), --cursor.column, 1);
+        return;
+    }
+
+    if cursor.row == 0  return;
+
+    let del = get_string_builder(buf, cursor.row);
+    let sb = get_string_builder(buf, cursor.row - 1);
+    cursor.column = sb.length;
+    sb_append(sb, del.content);
+    sb_free(@del);
+    list_ordered_remove(buf.lines, cursor.row--);
+}
+
+void render_textbuffer(RenderLayer* layer, Textbuffer* buf, Cursor* cursor) {
+    vec2 start = {-1, 1};
+    start.x += 0.1;
+    start.y -= 0.1;
+
+    let pos = start;
+    float32 glyph_height = 0.05;
+
+    for uint32 it : 0 .. list_length(buf.lines) {
+        // let line_num_pos = pos;
+        // line_num_pos.x -= glyph_height * 2;
+        // text_backwards(layer, line_num_pos, glyph_height * 0.7, to_string(it + 1), Gray);
+
+        // pos = draw_text(pos, glyph_height, buf.lines[it].sb.content, White);
+        draw_texteditor_line(layer, *buf.lines[it], pos, glyph_height, it + 1);
+
+        pos.y -= glyph_height;
+        pos.x = start.x;
+    }
+
+
+    // draw cursor
+    vec2 cursor_size = { glyph_height * 0.5, glyph_height };
+    let cursor_pos = start;
+    cursor_pos.x += cursor.column * cursor_size.x;
+    cursor_pos.y -= cursor.row * cursor_size.y;
+    Color cursor_color = opacity(White, 0.4);
+    rect(layer, cursor_pos, cursor_size, cursor_color);
+}
+
+void perform_cursor_operation(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
+    switch (mods) {
+        case 0: switch (key) {
+            case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
+            case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
+            case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); break;
+            case GLFW_KEY_DELETE:    delete_forward(buf, cursor); break;
+
+            case GLFW_KEY_KP_7:
+            case GLFW_KEY_HOME: cursor.column = 0; break;
+            case GLFW_KEY_KP_1:
+            case GLFW_KEY_END:  cursor.column = buf.lines[cursor.row].sb.length; break;
+
+            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); break;
+            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); break;
+            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); break;
+            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); break;
+        } break;
+
+        case GLFW_MOD_CONTROL: switch (key) {
+            case GLFW_KEY_RIGHT: jump_cursor(buf, cursor,  1); break;
+            case GLFW_KEY_LEFT:  jump_cursor(buf, cursor, -1); break;
+            case GLFW_KEY_DOWN:  jump_cursor_vertical(buf, cursor,  1); break;
+            case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); break;
+        } break;
+
+        case GLFW_MOD_ALT: switch (key) {
+            case GLFW_KEY_DOWN: push_line_down(buf, cursor); break;
+            case GLFW_KEY_UP:   push_line_up(buf, cursor); break;
+        } break;
+    }
+}
