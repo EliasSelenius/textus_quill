@@ -9,7 +9,10 @@ struct TextbufferLine {
 
 struct Cursor {
     uint32 row, column;
+    uint32 row2, column2;
 }
+
+bool is_doing_selection(Cursor* cursor) return cursor.row != cursor.row2 or cursor.column != cursor.column2;
 
 StringBuilder* get_string_builder(Textbuffer* buf, uint32 row) { return *buf.lines[row].sb; }
 uint32 last_row(Textbuffer* buf) { return list_length(buf.lines) - 1; }
@@ -196,65 +199,75 @@ void delete_backward(Textbuffer* buf, Cursor* cursor) {
     list_ordered_remove(buf.lines, cursor.row--);
 }
 
-void render_textbuffer(RenderLayer* layer, Textbuffer* buf, Cursor* cursor) {
-    vec2 start = {-1, 1};
-    start.x += 0.1;
-    start.y -= 0.1;
+// void render_textbuffer(RenderLayer* layer, Textbuffer* buf, Cursor* cursor) {
+//     vec2 start = {-1, 1};
+//     start.x += 0.1;
+//     start.y -= 0.1;
 
-    let pos = start;
-    float32 glyph_height = 0.05;
+//     let pos = start;
+//     float32 glyph_height = 0.05;
 
-    for uint32 it : 0 .. list_length(buf.lines) {
-        // let line_num_pos = pos;
-        // line_num_pos.x -= glyph_height * 2;
-        // text_backwards(layer, line_num_pos, glyph_height * 0.7, to_string(it + 1), Gray);
+//     for uint32 it : 0 .. list_length(buf.lines) {
+//         // let line_num_pos = pos;
+//         // line_num_pos.x -= glyph_height * 2;
+//         // text_backwards(layer, line_num_pos, glyph_height * 0.7, to_string(it + 1), Gray);
 
-        // pos = draw_text(pos, glyph_height, buf.lines[it].sb.content, White);
-        draw_texteditor_line(layer, *buf.lines[it], pos, glyph_height, it + 1);
+//         // pos = draw_text(pos, glyph_height, buf.lines[it].sb.content, White);
+//         draw_texteditor_line(layer, *buf.lines[it], pos, glyph_height, it + 1);
 
-        pos.y -= glyph_height;
-        pos.x = start.x;
-    }
+//         pos.y -= glyph_height;
+//         pos.x = start.x;
+//     }
 
 
-    // draw cursor
-    vec2 cursor_size = { glyph_height * 0.5, glyph_height };
-    let cursor_pos = start;
-    cursor_pos.x += cursor.column * cursor_size.x;
-    cursor_pos.y -= cursor.row * cursor_size.y;
-    Color cursor_color = opacity(White, 0.4);
-    rect(layer, cursor_pos, cursor_size, cursor_color);
-}
+//     // draw cursor
+//     vec2 cursor_size = { glyph_height * 0.5, glyph_height };
+//     let cursor_pos = start;
+//     cursor_pos.x += cursor.column * cursor_size.x;
+//     cursor_pos.y -= cursor.row * cursor_size.y;
+//     Color cursor_color = opacity(White, 0.4);
+//     rect(layer, cursor_pos, cursor_size, cursor_color);
+// }
+
 
 void perform_cursor_operation(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
-    switch (mods) {
-        case 0: switch (key) {
-            case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
-            case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
-            case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); break;
-            case GLFW_KEY_DELETE:    delete_forward(buf, cursor); break;
 
-            case GLFW_KEY_KP_7:
-            case GLFW_KEY_HOME: cursor.column = 0; break;
-            case GLFW_KEY_KP_1:
-            case GLFW_KEY_END:  cursor.column = buf.lines[cursor.row].sb.length; break;
-
-            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); break;
-            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); break;
-            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); break;
-            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); break;
-        } break;
-
-        case GLFW_MOD_CONTROL: switch (key) {
+    if mods & GLFW_MOD_ALT {
+        switch key {
+            case GLFW_KEY_DOWN: push_line_down(buf, cursor); break;
+            case GLFW_KEY_UP:   push_line_up(buf, cursor); break;
+        }
+    } else if mods & GLFW_MOD_CONTROL {
+        switch (key) {
             case GLFW_KEY_RIGHT: jump_cursor(buf, cursor,  1); break;
             case GLFW_KEY_LEFT:  jump_cursor(buf, cursor, -1); break;
             case GLFW_KEY_DOWN:  jump_cursor_vertical(buf, cursor,  1); break;
             case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); break;
-        } break;
+        }
+    } else {
+        switch (key) {
+            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); break;
+            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); break;
+            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); break;
+            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); break;
+        }
+    }
 
-        case GLFW_MOD_ALT: switch (key) {
-            case GLFW_KEY_DOWN: push_line_down(buf, cursor); break;
-            case GLFW_KEY_UP:   push_line_up(buf, cursor); break;
-        } break;
+    switch (key) {
+        case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
+        case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
+        case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); break;
+        case GLFW_KEY_DELETE:    delete_forward(buf, cursor); break;
+
+        case GLFW_KEY_KP_7:
+        case GLFW_KEY_HOME: cursor.column = 0; break;
+        case GLFW_KEY_KP_1:
+        case GLFW_KEY_END:  cursor.column = buf.lines[cursor.row].sb.length; break;
+
+    }
+
+    if !(mods & GLFW_MOD_SHIFT) {
+        cursor.row2 = cursor.row;
+        cursor.column2 = cursor.column;
     }
 }

@@ -91,7 +91,7 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
                 } break;
 
                 case GLFW_KEY_N: texteditor_new(); break;
-                case GLFW_KEY_W: texteditor_free(active_editor); break;
+                case GLFW_KEY_W: if active_editor texteditor_free(active_editor); break;
             } break;
 
             case GLFW_MOD_ALT: switch (data.key) {

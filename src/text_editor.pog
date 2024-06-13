@@ -209,6 +209,53 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
     }
 }
 
+void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
+    vec2 glyph_size = { ed.glyph_height * 0.5, ed.glyph_height };
+    Color cursor_color = opacity(White, 0.4);
+
+    uint32 min_row = cursor.row;
+    uint32 min_col = cursor.column;
+    uint32 max_row = cursor.row2;
+    uint32 max_col = cursor.column2;
+
+    if min_row > max_row {
+        min_row = cursor.row2;
+        min_col = cursor.column2;
+        max_row = cursor.row;
+        max_col = cursor.column;
+    }
+
+    void draw_cursor_line(RenderLayer* layer, Texteditor* ed, vec2 pos, uint32 row, col1, col2, Color color) {
+        vec2 glyph_size = { ed.glyph_height * 0.5, ed.glyph_height };
+        vec2 size = glyph_size;
+        size.x *= 1 + col2 - col1;
+
+        float32 col1_p = col1 * glyph_size.x;
+        float32 col2_p = col2 * glyph_size.x;
+
+        pos.y -= row * glyph_size.y;
+        pos.x += (col1_p + col2_p) / 2.0;
+
+        rect(layer, pos, size, color);
+    }
+
+    if cursor.row == cursor.row2 {
+        let mi = min(cursor.column, cursor.column2);
+        let mx = max(cursor.column, cursor.column2);
+        draw_cursor_line(layer, ed, pos, cursor.row, mi, mx, cursor_color);
+    } else {
+        draw_cursor_line(layer, ed, pos, min_row, min_col, get_string_builder(*ed.buf, min_row).length, cursor_color);
+        draw_cursor_line(layer, ed, pos, max_row, 0, max_col, cursor_color);
+        for uint32 row : min_row + 1 .. max_row {
+            draw_cursor_line(layer, ed, pos, row, 0, get_string_builder(*ed.buf, row).length, cursor_color);
+        }
+    }
+
+    // rect(layer, add(pos, calc_view_pos(ed, cursor.row, cursor.column)), glyph_size, cursor_color);
+    // rect(layer, add(pos, calc_view_pos(ed, cursor.row2, cursor.column2)), glyph_size, Yellow);
+
+}
+
 void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
 
     vec2 start = neg(ed.view_pos);
@@ -222,12 +269,7 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         pos.x = start.x;
     }
 
-
-    // draw cursor
-    vec2 cursor_size = { ed.glyph_height * 0.5, ed.glyph_height };
-    Color cursor_color = opacity(White, 0.4);
-    rect(layer, sub(calc_cursor_pos(ed), ed.view_pos), cursor_size, cursor_color);
-
+    draw_cursor(layer, ed, start, ed.cursor);
 
     { // draw tabs:
         const tab_text_height = 0.05;
