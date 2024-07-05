@@ -7,12 +7,27 @@ struct TextbufferLine {
     StringBuilder sb;
 }
 
+struct CursorCoord {
+    uint32 row, col;
+}
+
 struct Cursor {
     uint32 row, column;
     uint32 row2, column2;
 }
 
-bool is_doing_selection(Cursor* cursor) return cursor.row != cursor.row2 or cursor.column != cursor.column2;
+struct TextInputField {
+    Textbuffer buf;
+    Cursor cursor;
+}
+
+
+
+bool is_doing_selection(Cursor cursor) return cursor.row != cursor.row2 or cursor.column != cursor.column2;
+void cursor_unselect(Cursor* cursor) {
+    cursor.row2 = cursor.row;
+    cursor.column2 = cursor.column;
+}
 
 StringBuilder* get_string_builder(Textbuffer* buf, uint32 row) { return *buf.lines[row].sb; }
 uint32 last_row(Textbuffer* buf) { return list_length(buf.lines) - 1; }
@@ -64,6 +79,34 @@ void textbuffer_to_string(Textbuffer* buf, StringBuilder* sb) {
         sb_append(sb, "\n");
     }
     sb_remove(sb, sb.length - 1, 1); // remove trailing '\n'
+}
+
+string selection_to_string(Textbuffer* buf, Cursor* cursor, StringBuilder* sb) {
+    let bounds = get_selection_bounds(@cursor);
+
+    if bounds.min.row == bounds.max.row {
+        let line = get_string_builder(buf, bounds.min.row);
+        string s = { line.content + bounds.min.col, bounds.max.col - bounds.min.col };
+        sb_append(sb, s);
+        return to_string(@sb);
+    }
+
+    let first_line = get_string_builder(buf, bounds.min.row);
+    char* str = first_line.content + bounds.min.col;
+    sb_append(sb, str);
+    sb_append(sb, "\n");
+
+    for bounds.min.row + 1 .. bounds.max.row {
+        sb_append(sb, buf.lines[it].sb.content);
+        sb_append(sb, "\n");
+    }
+    // sb_remove(sb, sb.length - 1, 1); // remove trailing '\n'
+
+    let last_line = get_string_builder(buf, bounds.max.row);
+    string s = { last_line.content, bounds.max.col };
+    sb_append(sb, s);
+
+    return to_string(@sb);
 }
 
 
@@ -143,8 +186,12 @@ TextbufferLine* insert_new_line(Textbuffer* buf, uint32 row) {
     return list_insert(*buf.lines, row, *line) as TextbufferLine*;
 }
 
+void insert(Textbuffer* buf, Cursor* cursor, char* str) insert(buf, cursor, make_string(str));
 void insert(Textbuffer* buf, Cursor* cursor, string str) for 0 .. str.length  insert(buf, cursor, str.chars[it]);
 void insert(Textbuffer* buf, Cursor* cursor, char c) {
+
+    if is_doing_selection(@cursor) delete_selection(buf, cursor);
+
     if c == '\n' {
         let line = insert_new_line(buf, cursor.row + 1);
         let sb = get_string_builder(buf, cursor.row);
@@ -157,46 +204,109 @@ void insert(Textbuffer* buf, Cursor* cursor, char c) {
 
         cursor.row += 1;
         cursor.column = 0;
-        return;
+    } else {
+        string str = {*c, 1};
+        sb_insert(get_string_builder(buf, cursor.row), cursor.column++, str);
     }
 
-    string str = {*c, 1};
-    sb_insert(get_string_builder(buf, cursor.row), cursor.column++, str);
+    cursor_unselect(cursor);
 }
 
 void insert_tab(Textbuffer* buf, Cursor* cursor) {
     string str = make_string("    "); // TODO: hardcoded tabs to be 4 spaces
     sb_insert(get_string_builder(buf, cursor.row), cursor.column, str);
     cursor.column += str.length;
+    cursor_unselect(cursor);
+}
+
+
+struct CursorSelectionBounds {
+    CursorCoord min, max;
+}
+
+CursorSelectionBounds get_selection_bounds(Cursor cursor) {
+    CursorSelectionBounds b = {};
+
+    if cursor.row == cursor.row2 {
+        b.min.row = cursor.row;
+        b.max.row = cursor.row;
+        b.min.col = min(cursor.column, cursor.column2);
+        b.max.col = max(cursor.column, cursor.column2);
+    }
+
+    else if cursor.row < cursor.row2 {
+        b.min.row = cursor.row;
+        b.max.row = cursor.row2;
+        b.min.col = cursor.column;
+        b.max.col = cursor.column2;
+    }
+
+    else {
+        b.min.row = cursor.row2;
+        b.max.row = cursor.row;
+        b.min.col = cursor.column2;
+        b.max.col = cursor.column;
+    }
+
+    return b;
+}
+
+void delete_selection(Textbuffer* buf, Cursor* cursor) {
+
+    let bounds = get_selection_bounds(@cursor);
+
+    // if min_row == max_row {
+    //     if min_col == max_col  return;
+    //     return;
+    // }
+
+    let sb = get_string_builder(buf, bounds.min.row);
+    sb_truncate_length(sb, bounds.min.col);
+
+    char* cont = get_string_builder(buf, bounds.max.row).content + bounds.max.col;
+    sb_append(sb, cont);
+
+    for bounds.min.row + 1 .. bounds.max.row + 1 {
+        delete_row(buf, bounds.min.row + 1, null);
+    }
+
+    cursor.row = bounds.min.row;
+    cursor.column = bounds.min.col;
+    cursor_unselect(cursor);
+}
+
+void delete_row(Textbuffer* buf, uint32 row, StringBuilder* sb) {
+    let del = get_string_builder(buf, row);
+    if sb  sb_append(sb, del.content);
+    sb_free(@del);
+    list_ordered_remove(buf.lines, row);
 }
 
 void delete_forward(Textbuffer* buf, Cursor* cursor) {
+    if is_doing_selection(@cursor) { delete_selection(buf, cursor); return; }
+
     let sb = get_string_builder(buf, cursor.row);
     if cursor.column != sb.length {
         sb_remove(sb, cursor.column, 1);
         return;
     }
 
-    let del = get_string_builder(buf, cursor.row + 1);
-    sb_append(sb, del.content);
-    sb_free(@del);
-    list_ordered_remove(buf.lines, cursor.row + 1);
+    if cursor.row == last_row(buf) return;
+    delete_row(buf, cursor.row + 1, sb);
 }
 
 void delete_backward(Textbuffer* buf, Cursor* cursor) {
+    if is_doing_selection(@cursor) { delete_selection(buf, cursor); return; }
+
     if cursor.column {
         sb_remove(get_string_builder(buf, cursor.row), --cursor.column, 1);
         return;
     }
 
     if cursor.row == 0  return;
-
-    let del = get_string_builder(buf, cursor.row);
     let sb = get_string_builder(buf, cursor.row - 1);
     cursor.column = sb.length;
-    sb_append(sb, del.content);
-    sb_free(@del);
-    list_ordered_remove(buf.lines, cursor.row--);
+    delete_row(buf, cursor.row--, sb);
 }
 
 // void render_textbuffer(RenderLayer* layer, Textbuffer* buf, Cursor* cursor) {
@@ -230,7 +340,11 @@ void delete_backward(Textbuffer* buf, Cursor* cursor) {
 // }
 
 
-void perform_cursor_operation(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
+void recive_keyboard_input(TextInputField* field, int32 key, mods) recive_keyboard_input(*field.buf, *field.cursor, key, mods);
+
+void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
+
+    bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 
     if mods & GLFW_MOD_ALT {
         switch key {
@@ -239,35 +353,35 @@ void perform_cursor_operation(Textbuffer* buf, Cursor* cursor, int32 key, mods) 
         }
     } else if mods & GLFW_MOD_CONTROL {
         switch (key) {
-            case GLFW_KEY_RIGHT: jump_cursor(buf, cursor,  1); break;
-            case GLFW_KEY_LEFT:  jump_cursor(buf, cursor, -1); break;
-            case GLFW_KEY_DOWN:  jump_cursor_vertical(buf, cursor,  1); break;
-            case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); break;
+            case GLFW_KEY_RIGHT: jump_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_LEFT:  jump_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_DOWN:  jump_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+
+            case GLFW_KEY_X: {
+                glfwSetClipboardString(app.main_window, selection_to_string(buf, cursor, temp_builder()).chars);
+                delete_selection(buf, cursor);
+            } break;
+            case GLFW_KEY_C: glfwSetClipboardString(app.main_window, selection_to_string(buf, cursor, temp_builder()).chars); break;
+            case GLFW_KEY_V: insert(buf, cursor, glfwGetClipboardString(app.main_window)); break;
         }
     } else {
         switch (key) {
-            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); break;
-            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); break;
-            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); break;
-            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); break;
+            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+
+            case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
+            case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
+
+            case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); cursor_unselect(cursor); break;
+            case GLFW_KEY_DELETE:    delete_forward(buf, cursor);  cursor_unselect(cursor); break;
+
+            case GLFW_KEY_KP_7:
+            case GLFW_KEY_HOME: cursor.column = 0; if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_KP_1:
+            case GLFW_KEY_END:  cursor.column = buf.lines[cursor.row].sb.length; if !shift cursor_unselect(cursor); break;
         }
-    }
-
-    switch (key) {
-        case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
-        case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
-        case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); break;
-        case GLFW_KEY_DELETE:    delete_forward(buf, cursor); break;
-
-        case GLFW_KEY_KP_7:
-        case GLFW_KEY_HOME: cursor.column = 0; break;
-        case GLFW_KEY_KP_1:
-        case GLFW_KEY_END:  cursor.column = buf.lines[cursor.row].sb.length; break;
-
-    }
-
-    if !(mods & GLFW_MOD_SHIFT) {
-        cursor.row2 = cursor.row;
-        cursor.column2 = cursor.column;
     }
 }

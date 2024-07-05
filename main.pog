@@ -9,6 +9,7 @@ include "src/projects.pog";
 // Compile:
 // -O0 -g -fsanitize=address -fno-omit-frame-pointer
 // ..\plang\bin\plang.exe main.pog cflags -g -lglfw3dll -l..\plang\bin\pog_compiler
+// ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -O0 -g -fsanitize=address -fno-omit-frame-pointer
 
 
 /*
@@ -35,6 +36,11 @@ include "src/projects.pog";
 
     - measure words per minute
 
+    - scroll and click to place cursor
+
+    idea: pixel snap. make textures snap to screen pixels, might fix aliasing problems in textus quill
+
+
     priority:
         - file navigator
         - auto indentation when hit enter
@@ -60,11 +66,11 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
     case .key_repeat:
     case .key_press: {
-        // print("[INFO]: \"", glfwGetKeyName(GLFW_KEY_UNKNOWN, data.scancode), "\" scancode: ", data.scancode, "\n");
+        // print("[INFO]: \"", glfwGetKeyName(GLFW_KEY_UNKNOWN, data.scancode), "\" scancode: ", data.scancode, " key: ", data.key, " mods: ", data.mods, "\n");
 
 
         if file_selector.open {
-            // perform_cursor_operation(*path_cursor, data.key, data.mods);
+            recive_keyboard_input(*file_selector.text_field, data.key, data.mods);
         } else if active_editor {
             text_editor_recive_keyboard_input(active_editor, data.key, data.mods);
         }
@@ -109,7 +115,7 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
 
         if file_selector.open {
-            insert(*file_selector.buf, *file_selector.cursor, c);
+            insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, c);
         } else if active_editor {
             write(active_editor, c);
         }
@@ -159,6 +165,9 @@ int32 main() {
     {
         file_selector.layer = create_layer();
         immediate_layer.next_layer = *file_selector.layer;
+
+        file_selector.text_field.buf = create_textbuffer();
+        file_selector.text_field.cursor = {};
 
         update_files();
     }
@@ -248,14 +257,12 @@ int32 main() {
     return 0;
 }
 
-
 struct FileSelectorPanel {
     RenderLayer layer;
     FileInfo* current_files; // list
     bool open;
 
-    Textbuffer buf;
-    Cursor cursor;
+    TextInputField text_field;
 }
 
 FileSelectorPanel file_selector;
@@ -271,12 +278,13 @@ void update_files() {
 
 void render_file_selection_menu(RenderLayer* layer) {
     vec2 size = make_vec(1.5, 1.8);
-    vec2 path_start = { -size.x / 2, size.y / 2 };
-    rect(layer, vec2_zero, size, Blue);
-    // text(layer, path_start, 0.08, to_string(path_cursor.line.sb), White);
-
-
     const glyph_height = 0.08;
+
+    vec2 path_start = { -size.x / 2, size.y / 2 - glyph_height / 2 };
+    rect(layer, vec2_zero, size, Blue);
+    text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
+
+
     vec2 list_pos = add(path_start, make_vec(0.1, - 0.1));
     for 0 .. list_length(file_selector.current_files) {
         text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);

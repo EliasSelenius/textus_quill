@@ -1,8 +1,6 @@
 
 Texteditor* active_editor;
 
-// TODO: idea: there might be a per texteditor arena to hold all the lines
-
 struct Texteditor {
     string file_name;
 
@@ -36,9 +34,9 @@ vec2 calc_view_pos(Texteditor* ed, uint32 row, col) {
 
 Texteditor* texteditor_new() {
     Texteditor* ed = malloc(sizeof Texteditor);
-    ed.file_name = {null, 0};
+    @ed = {};
+
     ed.buf = create_textbuffer();
-    ed.cursor = {};
     ed.glyph_height = 0.05;
     ed.view_pos = {1, 0};
 
@@ -242,17 +240,26 @@ void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
     if cursor.row == cursor.row2 {
         let mi = min(cursor.column, cursor.column2);
         let mx = max(cursor.column, cursor.column2);
-        draw_cursor_line(layer, ed, pos, cursor.row, mi, mx, cursor_color);
+        draw_cursor_line(layer, ed, pos, cursor.row, mi, mx - 1, cursor_color);
     } else {
         draw_cursor_line(layer, ed, pos, min_row, min_col, get_string_builder(*ed.buf, min_row).length, cursor_color);
-        draw_cursor_line(layer, ed, pos, max_row, 0, max_col, cursor_color);
+        draw_cursor_line(layer, ed, pos, max_row, 0, max_col - 1, cursor_color);
         for uint32 row : min_row + 1 .. max_row {
             draw_cursor_line(layer, ed, pos, row, 0, get_string_builder(*ed.buf, row).length, cursor_color);
         }
     }
 
-    // rect(layer, add(pos, calc_view_pos(ed, cursor.row, cursor.column)), glyph_size, cursor_color);
-    // rect(layer, add(pos, calc_view_pos(ed, cursor.row2, cursor.column2)), glyph_size, Yellow);
+
+
+    let size = glyph_size;
+    size.x *= 0.1;
+    vec2 p = calc_cursor_pos(ed);
+    p.x -= glyph_size.x / 2;
+    rect(layer, add(pos, p), size, White);
+
+    if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
+        draw_cursor_line(layer, ed, pos, cursor.row, 0, 1000, opacity(White, 0.1));
+    }
 
 }
 
@@ -293,17 +300,19 @@ void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {
 
     ed.follow_cursor = true;
 
-    perform_cursor_operation(*ed.buf, *ed.cursor, key, mods);
+    recive_keyboard_input(*ed.buf, *ed.cursor, key, mods);
 
     switch (mods) {
         case 0: switch (key) {
             case GLFW_KEY_PAGE_UP: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
                 move_cursor_vertical(*ed.buf, *ed.cursor, -num_lines_on_page);
+                cursor_unselect(*ed.cursor);
             } break;
             case GLFW_KEY_PAGE_DOWN: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
                 move_cursor_vertical(*ed.buf, *ed.cursor, num_lines_on_page);
+                cursor_unselect(*ed.cursor);
             } break;
         } break;
 
