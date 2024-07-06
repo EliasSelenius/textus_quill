@@ -44,9 +44,7 @@ include "src/projects.pog";
     priority:
         - file navigator
         - auto indentation when hit enter
-        - text selection
         - backspace and delete should also work when ctrl jump is active
-        - shift-del to delete line and put into clipboard
 
 */
 

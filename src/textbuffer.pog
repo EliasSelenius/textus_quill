@@ -16,12 +16,42 @@ struct Cursor {
     uint32 row2, column2;
 }
 
+struct CursorSelectionBounds {
+    CursorCoord min, max;
+}
+
 struct TextInputField {
     Textbuffer buf;
     Cursor cursor;
 }
 
 
+CursorSelectionBounds get_selection_bounds(Cursor cursor) {
+    CursorSelectionBounds b = {};
+
+    if cursor.row == cursor.row2 {
+        b.min.row = cursor.row;
+        b.max.row = cursor.row;
+        b.min.col = min(cursor.column, cursor.column2);
+        b.max.col = max(cursor.column, cursor.column2);
+    }
+
+    else if cursor.row < cursor.row2 {
+        b.min.row = cursor.row;
+        b.max.row = cursor.row2;
+        b.min.col = cursor.column;
+        b.max.col = cursor.column2;
+    }
+
+    else {
+        b.min.row = cursor.row2;
+        b.max.row = cursor.row;
+        b.min.col = cursor.column2;
+        b.max.col = cursor.column;
+    }
+
+    return b;
+}
 
 bool is_doing_selection(Cursor cursor) return cursor.row != cursor.row2 or cursor.column != cursor.column2;
 void cursor_unselect(Cursor* cursor) {
@@ -81,8 +111,7 @@ void textbuffer_to_string(Textbuffer* buf, StringBuilder* sb) {
     sb_remove(sb, sb.length - 1, 1); // remove trailing '\n'
 }
 
-string selection_to_string(Textbuffer* buf, Cursor* cursor, StringBuilder* sb) {
-    let bounds = get_selection_bounds(@cursor);
+string selection_to_string(Textbuffer* buf, CursorSelectionBounds bounds, StringBuilder* sb) {
 
     if bounds.min.row == bounds.max.row {
         let line = get_string_builder(buf, bounds.min.row);
@@ -220,46 +249,17 @@ void insert_tab(Textbuffer* buf, Cursor* cursor) {
 }
 
 
-struct CursorSelectionBounds {
-    CursorCoord min, max;
-}
 
-CursorSelectionBounds get_selection_bounds(Cursor cursor) {
-    CursorSelectionBounds b = {};
-
-    if cursor.row == cursor.row2 {
-        b.min.row = cursor.row;
-        b.max.row = cursor.row;
-        b.min.col = min(cursor.column, cursor.column2);
-        b.max.col = max(cursor.column, cursor.column2);
-    }
-
-    else if cursor.row < cursor.row2 {
-        b.min.row = cursor.row;
-        b.max.row = cursor.row2;
-        b.min.col = cursor.column;
-        b.max.col = cursor.column2;
-    }
-
-    else {
-        b.min.row = cursor.row2;
-        b.max.row = cursor.row;
-        b.min.col = cursor.column2;
-        b.max.col = cursor.column;
-    }
-
-    return b;
-}
 
 void delete_selection(Textbuffer* buf, Cursor* cursor) {
-
     let bounds = get_selection_bounds(@cursor);
+    delete_bounds(buf, bounds);
+    cursor.row = bounds.min.row;
+    cursor.column = bounds.min.col;
+    cursor_unselect(cursor);
+}
 
-    // if min_row == max_row {
-    //     if min_col == max_col  return;
-    //     return;
-    // }
-
+void delete_bounds(Textbuffer* buf, CursorSelectionBounds bounds) {
     let sb = get_string_builder(buf, bounds.min.row);
     sb_truncate_length(sb, bounds.min.col);
 
@@ -269,10 +269,6 @@ void delete_selection(Textbuffer* buf, Cursor* cursor) {
     for bounds.min.row + 1 .. bounds.max.row + 1 {
         delete_row(buf, bounds.min.row + 1, null);
     }
-
-    cursor.row = bounds.min.row;
-    cursor.column = bounds.min.col;
-    cursor_unselect(cursor);
 }
 
 void delete_row(Textbuffer* buf, uint32 row, StringBuilder* sb) {
@@ -359,10 +355,10 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
             case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
 
             case GLFW_KEY_X: {
-                glfwSetClipboardString(app.main_window, selection_to_string(buf, cursor, temp_builder()).chars);
+                glfwSetClipboardString(app.main_window, selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars);
                 delete_selection(buf, cursor);
             } break;
-            case GLFW_KEY_C: glfwSetClipboardString(app.main_window, selection_to_string(buf, cursor, temp_builder()).chars); break;
+            case GLFW_KEY_C: glfwSetClipboardString(app.main_window, selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars); break;
             case GLFW_KEY_V: insert(buf, cursor, glfwGetClipboardString(app.main_window)); break;
         }
     } else {
@@ -376,7 +372,29 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
             case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
 
             case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); cursor_unselect(cursor); break;
-            case GLFW_KEY_DELETE:    delete_forward(buf, cursor);  cursor_unselect(cursor); break;
+            case GLFW_KEY_DELETE: {
+                if shift {
+
+                    CursorSelectionBounds bounds = {
+                        min = { cursor.row, 0 },
+                        max = { cursor.row + 1, 0 }
+                    };
+
+                    if bounds.max.row > last_row(buf) {
+                        bounds.max.row = last_row(buf);
+                    }
+
+                    glfwSetClipboardString(app.main_window, selection_to_string(buf, bounds, temp_builder()).chars);
+
+                    delete_bounds(buf, bounds);
+                    cursor.row = bounds.min.row;
+                    cursor.column = bounds.min.col;
+
+                } else {
+                    delete_forward(buf, cursor);
+                }
+                cursor_unselect(cursor);
+            } break;
 
             case GLFW_KEY_KP_7:
             case GLFW_KEY_HOME: cursor.column = 0; if !shift cursor_unselect(cursor); break;
