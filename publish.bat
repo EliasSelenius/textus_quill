@@ -7,6 +7,6 @@
 @copy ..\grax\CascadiaMono.bmp release\grax
 
 @mkdir release\bin\src
-@copy src\text_editor.pog release\bin\src
+@copy src\textbuffer.pog release\bin\src
 
 butler push release EliasSelenius/textus-quill:win-x64

@@ -8,6 +8,7 @@ include "src/projects.pog";
 
 // Compile:
 // -O0 -g -fsanitize=address -fno-omit-frame-pointer
+// ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
 // ..\plang\bin\plang.exe main.pog cflags -g -lglfw3dll -l..\plang\bin\pog_compiler
 // ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -O0 -g -fsanitize=address -fno-omit-frame-pointer
 
@@ -44,7 +45,6 @@ include "src/projects.pog";
     priority:
         - file navigator
         - auto indentation when hit enter
-        - backspace and delete should also work when ctrl jump is active
 
 */
 

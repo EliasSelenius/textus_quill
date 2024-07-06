@@ -344,8 +344,8 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
 
     if mods & GLFW_MOD_ALT {
         switch key {
-            case GLFW_KEY_DOWN: push_line_down(buf, cursor); break;
-            case GLFW_KEY_UP:   push_line_up(buf, cursor); break;
+            case GLFW_KEY_DOWN: push_line_down(buf, cursor); cursor_unselect(cursor); break;
+            case GLFW_KEY_UP:   push_line_up(buf, cursor);   cursor_unselect(cursor); break;
         }
     } else if mods & GLFW_MOD_CONTROL {
         switch (key) {
@@ -360,6 +360,35 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
             } break;
             case GLFW_KEY_C: glfwSetClipboardString(app.main_window, selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars); break;
             case GLFW_KEY_V: insert(buf, cursor, glfwGetClipboardString(app.main_window)); break;
+
+            case GLFW_KEY_BACKSPACE: {
+                CursorSelectionBounds bounds = {};
+                bounds.min.row = cursor.row;
+                bounds.max.row = cursor.row;
+
+                bounds.max.col = cursor.column;
+                jump_cursor(buf, cursor, -1);
+                bounds.min.col = cursor.column;
+
+                delete_bounds(buf, bounds);
+                cursor_unselect(cursor);
+            } break;
+
+            case GLFW_KEY_DELETE: {
+                CursorSelectionBounds bounds = {};
+                bounds.min.row = cursor.row;
+                bounds.max.row = cursor.row;
+
+                bounds.min.col = cursor.column;
+                jump_cursor(buf, cursor, 1);
+                bounds.max.col = cursor.column;
+
+                delete_bounds(buf, bounds);
+
+                cursor.column = bounds.min.col;
+                cursor_unselect(cursor);
+            } break;
+
         }
     } else {
         switch (key) {
