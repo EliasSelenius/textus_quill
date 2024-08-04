@@ -7,9 +7,7 @@ include "src/theme.pog";
 include "src/projects.pog";
 
 // Compile:
-// -O0 -g -fsanitize=address -fno-omit-frame-pointer
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
-// ..\plang\bin\plang.exe main.pog cflags -g -lglfw3dll -l..\plang\bin\pog_compiler
 // ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -O0 -g -fsanitize=address -fno-omit-frame-pointer
 
 
@@ -28,6 +26,7 @@ include "src/projects.pog";
     - builtin terminal
     - display binary file
     - line color status in margin (is unsaved, is untracked addition for source controll)
+    - measure words per minute
 
     intelisense engine:
     - texteditor internal text format -> tokens for parser
@@ -35,16 +34,14 @@ include "src/projects.pog";
     - bind_units()
     - cleanup after a unit so that rebinding can take place (use arenas)
 
-    - measure words per minute
-
     - scroll and click to place cursor
-
-    idea: pixel snap. make textures snap to screen pixels, might fix aliasing problems in textus quill
-
 
     priority:
         - file navigator
         - auto indentation when hit enter
+
+
+    idea: pixel snap. make textures snap to screen pixels, might fix aliasing problems in textus quill
 
 */
 
@@ -290,3 +287,31 @@ void render_file_selection_menu(RenderLayer* layer) {
     }
 }
 
+
+
+
+
+
+
+void render_keybinds_menu(RenderLayer* layer) {
+    float32 width = 2;
+
+    // English-US:
+    // ` 1 2 3 4 5 6 7 8 9 0 - = backspace
+    // tab q w e r t y u i o p [ ]
+    // caps a s d f g h j k l ; ' \
+    // shift \ z x c v b n m , . / shift
+
+    // Norwegian:
+    // | 1 2 3 4 5 6 7 8 9 0 + \ backspace
+    // tab q w e r t y u i o p å ¨
+    // caps a s d f g h j k l ø æ '
+    // shift < z x c v b n m , . - shift
+
+    // Esperanto:
+    // ` 1 2 3 4 5 6 7 8 9 0 - = backspace
+    // tab ŝ ŭ e r t ĵ u i o p ĝ ĥ
+    // caps a s d f g h j k l ; ' \
+    // shift \ z ĉ c v b n m , . / shift
+
+}
