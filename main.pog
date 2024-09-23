@@ -227,10 +227,11 @@ int32 main() {
 
             float32 exp_decay(float32 a, b, decay, dt) return b + (a-b) * expf(-decay*dt);
             float32 decay = 5;
-            ed.view_pos.y = exp_decay(ed.view_pos.y, ed.target_view_pos.y, decay, deltatime());
+            float32 dt = app.frame_time;
+            ed.view_pos.y = exp_decay(ed.view_pos.y, ed.target_view_pos.y, decay, dt);
 
             let p = sub(ed.target_view_pos, ed.view_pos);
-            if abs(p.x) > 1  ed.view_pos.x = exp_decay(ed.view_pos.x, ed.target_view_pos.x, 1, deltatime());
+            if abs(p.x) > 1  ed.view_pos.x = exp_decay(ed.view_pos.x, ed.target_view_pos.x, 1, dt);
 
             draw_texteditor(*immediate_layer, ed);
 
