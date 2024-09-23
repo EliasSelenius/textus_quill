@@ -261,6 +261,12 @@ void delete_selection(Textbuffer* buf, Cursor* cursor) {
 
 void delete_bounds(Textbuffer* buf, CursorSelectionBounds bounds) {
     let sb = get_string_builder(buf, bounds.min.row);
+
+    if bounds.min.row == bounds.max.row {
+        sb_remove(sb, bounds.min.col, bounds.max.col - bounds.min.col);
+        return;
+    }
+
     sb_truncate_length(sb, bounds.min.col);
 
     char* cont = get_string_builder(buf, bounds.max.row).content + bounds.max.col;

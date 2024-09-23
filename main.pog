@@ -66,6 +66,7 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
         if file_selector.open {
             recive_keyboard_input(*file_selector.text_field, data.key, data.mods);
+            update_files();
         } else if active_editor {
             text_editor_recive_keyboard_input(active_editor, data.key, data.mods);
         }
@@ -79,7 +80,7 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
                 case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
                 case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
 
-                case GLFW_KEY_P: file_selector.open = true; break;
+                case GLFW_KEY_P: file_selector.open = true; update_files(); break;
 
                 case GLFW_KEY_T: {
                     ColorTheme*[] themes = {
@@ -111,6 +112,7 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
         if file_selector.open {
             insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, c);
+            update_files();
         } else if active_editor {
             write(active_editor, c);
         }
@@ -262,12 +264,17 @@ struct FileSelectorPanel {
 
 FileSelectorPanel file_selector;
 
+include "../pog/modules/System/files.pog";
+
 void update_files() {
     if file_selector.current_files list_delete(file_selector.current_files);
 
-    file_selector.current_files = get_all_files("src", false);
+    char* query = concat("*", file_selector.text_field.buf.lines[0].sb.content, "*");
+    print("query: ", query, "\n");
+    file_selector.current_files = query_files(make_string(query));
     for 0 .. list_length(file_selector.current_files) {
-        print(file_selector.current_files[it], "\n");
+        let file = file_selector.current_files[it];
+        print(file, "\n");
     }
 }
 
@@ -283,7 +290,7 @@ void render_file_selection_menu(RenderLayer* layer) {
     vec2 list_pos = add(path_start, make_vec(0.1, - 0.1));
     for 0 .. list_length(file_selector.current_files) {
         text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
-        list_pos.y -= glyph_height * 2;
+        list_pos.y -= glyph_height * 1.2;
     }
 }
 

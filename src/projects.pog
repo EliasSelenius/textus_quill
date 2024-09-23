@@ -14,7 +14,7 @@ void add_folder(FileInfo info, void* user_data) {
 }
 
 void load_all_projects_in_folder(char* projects_folder) {
-    enumerate_files(projects_folder, add_folder, null, false);
+    // enumerate_files(projects_folder, add_folder, null, false);
 }
 
 void draw_project_selection_menu() {
