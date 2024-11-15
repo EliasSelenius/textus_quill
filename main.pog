@@ -1,10 +1,13 @@
 
 include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
+include "../pog/modules/System/files.pog";
+
 include "src/text_editor.pog";
 include "src/textbuffer.pog";
 include "src/theme.pog";
 include "src/projects.pog";
+
 
 // Compile:
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
@@ -19,6 +22,7 @@ include "src/projects.pog";
 /* Big Time Ideas:
     - execution statistics: know which code paths are actually taken, how common they are, what errors may have occurred
     - integrated REPL: entire type system and API of the currently loaded project is exposed to REPL
+    - memory graph
 */
 
 /* TODO:
@@ -225,7 +229,6 @@ int32 main() {
                 ed.target_view_pos = calc_cursor_pos(ed);
             }
 
-            float32 exp_decay(float32 a, b, decay, dt) return b + (a-b) * expf(-decay*dt);
             float32 decay = 5;
             float32 dt = app.frame_time;
             ed.view_pos.y = exp_decay(ed.view_pos.y, ed.target_view_pos.y, decay, dt);
@@ -264,8 +267,6 @@ struct FileSelectorPanel {
 }
 
 FileSelectorPanel file_selector;
-
-include "../pog/modules/System/files.pog";
 
 void update_files() {
     if file_selector.current_files list_delete(file_selector.current_files);
