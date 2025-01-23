@@ -69,8 +69,18 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
 
         if file_selector.open {
-            recive_keyboard_input(*file_selector.text_field, data.key, data.mods);
+            switch data.key {
+                case GLFW_KEY_UP:   file_selector.selected_line--; break;
+                case GLFW_KEY_DOWN: file_selector.selected_line++; break;
+                case GLFW_KEY_ENTER: {
+                    texteditor_open_file(file_selector.current_files[file_selector.selected_line].path.chars);
+                    file_selector.open = false;
+                } break;
+                default: recive_keyboard_input(*file_selector.text_field, data.key, data.mods); break;
+            }
+
             update_files();
+
         } else if active_editor {
             text_editor_recive_keyboard_input(active_editor, data.key, data.mods);
         }
@@ -261,6 +271,7 @@ int32 main() {
 struct FileSelectorPanel {
     RenderLayer layer;
     FileInfo* current_files; // list
+    uint32 selected_line;
     bool open;
 
     TextInputField text_field;
@@ -269,7 +280,12 @@ struct FileSelectorPanel {
 FileSelectorPanel file_selector;
 
 void update_files() {
-    if file_selector.current_files list_delete(file_selector.current_files);
+    if file_selector.current_files {
+        for 0 .. list_length(file_selector.current_files) {
+            free(file_selector.current_files[it].path.chars); // TODO: should realy be using some kind of temp allocator instead
+        }
+        list_delete(file_selector.current_files);
+    }
 
     char* query = concat("*", file_selector.text_field.buf.lines[0].sb.content, "*");
     print("query: ", query, "\n");
@@ -289,11 +305,25 @@ void render_file_selection_menu(RenderLayer* layer) {
     text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
 
 
-    vec2 list_pos = add(path_start, make_vec(0.1, - 0.1));
-    for 0 .. list_length(file_selector.current_files) {
+    vec2 list_start = path_start + make_vec(0.1, -0.1);
+    vec2 list_pos = list_start;
+    uint32 list_len = list_length(file_selector.current_files);
+    for 0 .. list_len {
         text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
         list_pos.y -= glyph_height * 1.2;
     }
+
+    int32 index = file_selector.selected_line as int32;
+    int32 max_index = (list_len-1) as int32;
+    if index < 0 {
+        index = max_index;
+    } else if index > max_index {
+        index = 0;
+    }
+
+    file_selector.selected_line = index as uint32;
+
+    rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(size.x, glyph_height), opacity(White, 0.2));
 }
 
 
