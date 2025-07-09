@@ -186,27 +186,18 @@ int32 main() {
     while grax_loop() {
 
         { // calc theme
-
-            Color lerp(Color a, b, float32 t) return {
-                a.r + (b.r-a.r)*t,
-                a.g + (b.g-a.g)*t,
-                a.b + (b.b-a.b)*t,
-                a.a + (b.a-a.a)*t
-            };
-
-
             let t = min(1.0, theme_lerp_factor);
             theme_lerp_factor += deltatime();
 
-            theme.background     = lerp(prev_theme.background,     next_theme.background, t);
-            theme.whitespace     = lerp(prev_theme.whitespace,     next_theme.whitespace, t);
-            theme.word           = lerp(prev_theme.word,           next_theme.word, t);
-            theme.keyword        = lerp(prev_theme.keyword,        next_theme.keyword, t);
-            theme.punctuation    = lerp(prev_theme.punctuation,    next_theme.punctuation, t);
-            theme.number_literal = lerp(prev_theme.number_literal, next_theme.number_literal, t);
-            theme.string_literal = lerp(prev_theme.string_literal, next_theme.string_literal, t);
-            theme.comment        = lerp(prev_theme.comment,        next_theme.comment, t);
-            theme.unknown        = lerp(prev_theme.unknown,        next_theme.unknown, t);
+            theme.background     = lerp(t, prev_theme.background,     next_theme.background);
+            theme.whitespace     = lerp(t, prev_theme.whitespace,     next_theme.whitespace);
+            theme.word           = lerp(t, prev_theme.word,           next_theme.word);
+            theme.keyword        = lerp(t, prev_theme.keyword,        next_theme.keyword);
+            theme.punctuation    = lerp(t, prev_theme.punctuation,    next_theme.punctuation);
+            theme.number_literal = lerp(t, prev_theme.number_literal, next_theme.number_literal);
+            theme.string_literal = lerp(t, prev_theme.string_literal, next_theme.string_literal);
+            theme.comment        = lerp(t, prev_theme.comment,        next_theme.comment);
+            theme.unknown        = lerp(t, prev_theme.unknown,        next_theme.unknown);
 
             set_clear_color(theme.background);
         }
