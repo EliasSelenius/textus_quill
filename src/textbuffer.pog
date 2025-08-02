@@ -1,6 +1,6 @@
 
 struct Textbuffer {
-    TextbufferLine* lines; // list
+    TextbufferLine[..] lines;
 }
 
 struct TextbufferLine {
@@ -70,7 +70,7 @@ Textbuffer create_textbuffer() {
 }
 
 void textbuffer_free(Textbuffer buf) {
-    let len = list_length(buf.lines);
+    uint32 len = list_length(buf.lines);
     for 0 .. len  sb_free(buf.lines[it].sb);
 
     list_delete(buf.lines);
@@ -140,7 +140,7 @@ string selection_to_string(Textbuffer* buf, CursorSelectionBounds bounds, String
 
 
 bool swap_lines(Textbuffer* buf, uint32 row1, row2) {
-    let len = list_length(buf.lines);
+    uint32 len = list_length(buf.lines);
     if row1 >= len or row2 >= len  return false;
 
     let line = buf.lines[row1];
@@ -212,7 +212,7 @@ void jump_cursor_vertical(Textbuffer* buf, Cursor* cursor, int32 dir) {
 TextbufferLine* insert_new_line(Textbuffer* buf, uint32 row) {
     TextbufferLine line = {};
     line.sb = sb_create();
-    return list_insert(*buf.lines, row, *line) as TextbufferLine*;
+    return list_insert(*buf.lines as void**, row, *line) as TextbufferLine*;
 }
 
 void insert(Textbuffer* buf, Cursor* cursor, char* str) insert(buf, cursor, make_string(str));

@@ -7,8 +7,9 @@ struct Texteditor {
     Texteditor* next;
     Texteditor* prev;
 
-    vec2 view_pos;
-    vec2 target_view_pos;
+
+    Transform2D cam;
+    Transform2D target_cam;
 
     Textbuffer buf;
     Cursor cursor;
@@ -36,9 +37,11 @@ Texteditor* texteditor_new() {
     Texteditor* ed = malloc(sizeof Texteditor);
     @ed = {};
 
+    ed.cam = {scale=1, pos={1,0}};
+    ed.target_cam = ed.cam;
+
     ed.buf = create_textbuffer();
     ed.glyph_height = 0.05;
-    ed.view_pos = {1, 0};
 
     if active_editor == null {
         active_editor = ed;
@@ -197,12 +200,17 @@ Token get_next_token(char* start) {
 void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, float32 height, uint32 line_number) {
     vec2 line_num_pos = pos;
     line_num_pos.x -= height * 2;
-    text_backwards(layer, line_num_pos, height * 0.7, to_string(line_number), Gray);
+    draw_text_backwards(layer, line_num_pos, height * 0.7, to_string(line_number), Gray);
+
+    int32 s = line_number as int32;
+    Color status_color = { random_range(s++, 0, 255) as uint8, random_range(s++, 0, 255) as uint8, random_range(s++, 0, 255) as uint8, 255 };
+    vec2 status_pos = pos - {height*0.5, 0};
+    draw_rect(layer, status_pos, make_vec(height*0.5*0.3, height), status_color);
 
     uint32 i = 0;
     while i < line.sb.length {
         let token = get_next_token(*line.sb.content[i]);
-        pos = text(layer, pos, height, token.text, token_color(token.kind));
+        pos = draw_text(layer, pos, height, token.text, token_color(token.kind));
         i += token.text.length;
     }
 }
@@ -234,7 +242,7 @@ void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
         pos.y -= row * glyph_size.y;
         pos.x += (col1_p + col2_p) / 2.0;
 
-        rect(layer, pos, size, color);
+        draw_rect(layer, pos, size, color);
     }
 
     if cursor.row == cursor.row2 {
@@ -255,7 +263,7 @@ void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
     size.x *= 0.1;
     vec2 p = calc_cursor_pos(ed);
     p.x -= glyph_size.x / 2;
-    rect(layer, add(pos, p), size, White);
+    draw_rect(layer, add(pos, p), size, White);
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
         draw_cursor_line(layer, ed, pos, cursor.row, 0, 1000, opacity(White, 0.1));
@@ -265,35 +273,17 @@ void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
 
 void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
 
-    vec2 start = neg(ed.view_pos);
-    let pos = start;
+    int32 row = round(-ed.cam.pos.y / ed.glyph_height) as int32;
+    int32 page = floor(ed.cam.scale / ed.glyph_height) as int32 + 1; // +1 effectively makes that floor a ceil
+    uint32 row_start = max(row - page, 0) as uint32;
+    uint32 row_end = min(row + page, list_length(ed.buf.lines) as int32 - 1) as uint32;
 
-    // TODO: calculate the range of lines visible on screen
-    for uint32 it : 0 .. list_length(ed.buf.lines) {
+    for uint32 it : row_start .. row_end+1 {
+        vec2 pos = {0, it * -ed.glyph_height};
         draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, it + 1);
-
-        pos.y -= ed.glyph_height;
-        pos.x = start.x;
     }
 
-    draw_cursor(layer, ed, start, ed.cursor);
-
-    { // draw tabs:
-        const tab_text_height = 0.05;
-        vec2 pos = app.top_left;
-        pos.y -= tab_text_height * 0.5;
-        pos.x += tab_text_height * 0.5;
-        let current_ed = ed;
-        loop: {
-            char* name = current_ed.file_name.chars ? current_ed.file_name.chars : "untitled";
-            pos = text(layer, pos, tab_text_height, name, White);
-
-            pos.x += tab_text_height * 2;
-
-            current_ed = current_ed.next;
-            if current_ed != ed goto loop;
-        }
-    }
+    draw_cursor(layer, ed, vec2_zero, ed.cursor);
 }
 
 void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {

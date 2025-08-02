@@ -17,7 +17,6 @@ struct ProgLanguage {
     string[] keywords;
 }
 
-// TODO: idea: interpolate color theme
 struct ColorTheme {
     Color background;
 

@@ -20,6 +20,7 @@ output.g.c
 *.exp
 
 *.raddbg
+*.rdi
 
 itch_cover_image.png
 untitled.pog

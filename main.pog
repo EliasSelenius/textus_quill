@@ -8,6 +8,7 @@ include "src/textbuffer.pog";
 include "src/theme.pog";
 include "src/projects.pog";
 
+include "src/image_editor.pog";
 
 // Compile:
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
@@ -23,6 +24,7 @@ include "src/projects.pog";
     - execution statistics: know which code paths are actually taken, how common they are, what errors may have occurred
     - integrated REPL: entire type system and API of the currently loaded project is exposed to REPL
     - memory graph
+    - proc call tracer
 */
 
 /* TODO:
@@ -73,8 +75,20 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
                 case GLFW_KEY_UP:   file_selector.selected_line--; break;
                 case GLFW_KEY_DOWN: file_selector.selected_line++; break;
                 case GLFW_KEY_ENTER: {
-                    texteditor_open_file(file_selector.current_files[file_selector.selected_line].path.chars);
-                    file_selector.open = false;
+                    let file = file_selector.current_files[file_selector.selected_line];
+                    switch file.file_kind {
+                        case .file: {
+                            texteditor_open_file(file.path.chars);
+                            file_selector.open = false;
+                        } break;
+                        case .folder: {
+
+                        } break;
+                        case .symlink: {
+
+                        } break;
+                    }
+
                 } break;
                 default: recive_keyboard_input(*file_selector.text_field, data.key, data.mods); break;
             }
@@ -137,10 +151,14 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
     default: break;
 }
 
+Transform2D camera_to_dispatch = {scale=600};
+RenderLayer ui_layer;
+
 int32 main() {
 
     grax_init();
     app.on_event = on_event;
+    init_draw2d();
 
     init_themes();
     init_languages();
@@ -175,13 +193,17 @@ int32 main() {
 
     {
         file_selector.layer = create_layer();
-        immediate_layer.next_layer = *file_selector.layer;
 
         file_selector.text_field.buf = create_textbuffer();
         file_selector.text_field.cursor = {};
 
         update_files();
+
+        ui_layer = create_layer();
+        immediate_layer = *ui_layer;
     }
+
+    let img_ed = open_image("../weekend_proj/assets/spritesheet.bmp");
 
     while grax_loop() {
 
@@ -208,8 +230,7 @@ int32 main() {
 
             void zoom(Texteditor* ed, float32 zoom) {
                 const speed = 0.05;
-                ed.glyph_height *= 1.0 + speed*zoom;
-                ed.view_pos.y   *= 1.0 + speed*zoom;
+                ed.cam.scale *= 1.0 + speed*zoom;
             }
 
             if key(GLFW_KEY_LEFT_CONTROL) {
@@ -220,25 +241,30 @@ int32 main() {
                 if key(GLFW_KEY_LEFT_CONTROL) {
                     zoom(ed, mouse_scroll);
                 } else {
-                    ed.target_view_pos.y += mouse_scroll * 0.1;
+                    // ed.target_view_pos.y += mouse_scroll * 0.1;
+                    ed.target_cam.pos.y += mouse_scroll * 0.1;
                     ed.follow_cursor = false;
                 }
             }
 
 
             if ed.follow_cursor {
-                ed.target_view_pos = calc_cursor_pos(ed);
+                ed.target_cam.pos = calc_cursor_pos(ed);
+
+                float32 s = ed.cam.scale;
+                if ed.target_cam.pos.x > s*2  ed.target_cam.pos.x -= s*1;
+                else ed.target_cam.pos.x = s*1;
             }
 
             float32 decay = 5;
             float32 dt = app.frame_time;
-            ed.view_pos.y = exp_decay(ed.view_pos.y, ed.target_view_pos.y, decay, dt);
+            exp_decay(*ed.cam.pos.y, ed.target_cam.pos.y, decay, dt);
+            exp_decay(*ed.cam.pos.x, ed.target_cam.pos.x, decay, dt);
 
-            let p = sub(ed.target_view_pos, ed.view_pos);
-            if abs(p.x) > 1  ed.view_pos.x = exp_decay(ed.view_pos.x, ed.target_view_pos.x, 1, dt);
+            draw_texteditor(*ui_layer, ed);
+            draw_tabs(*file_selector.layer, ed);
 
-            draw_texteditor(*immediate_layer, ed);
-
+            ui_layer.ui_camera = ed.cam;
 
         } else draw_project_selection_menu();
 
@@ -246,6 +272,12 @@ int32 main() {
             render_file_selection_menu(*file_selector.layer);
         }
 
+        // draw_img_editor(*img_ed, *ui_layer);
+
+        dispatch_sprites(camera_to_dispatch);
+        // ui_layer.ui_camera = camera_to_dispatch;
+        dispatch_layer(*ui_layer);
+        dispatch_layer(*file_selector.layer);
 
         // const border_thickness = 0.005;
         // draw_rect(make_vec(-1, 0), make_vec(border_thickness, 2), Red);
@@ -257,6 +289,23 @@ int32 main() {
     }
 
     return 0;
+}
+
+void draw_tabs(RenderLayer* layer, Texteditor* ed) {
+    const tab_text_height = 0.05;
+    vec2 pos = app.top_left;
+    pos.y -= tab_text_height * 0.5;
+    pos.x += tab_text_height * 0.5;
+    let current_ed = ed;
+    loop: {
+        char* name = current_ed.file_name.chars ? current_ed.file_name.chars : "untitled";
+        pos = draw_text(layer, pos, tab_text_height, name, White);
+
+        pos.x += tab_text_height * 2;
+
+        current_ed = current_ed.next;
+        if current_ed != ed goto loop;
+    }
 }
 
 struct FileSelectorPanel {
@@ -289,18 +338,18 @@ void update_files() {
 
 void render_file_selection_menu(RenderLayer* layer) {
     vec2 size = make_vec(1.5, 1.8);
-    const glyph_height = 0.08;
+    const glyph_height = 0.04;
 
     vec2 path_start = { -size.x / 2, size.y / 2 - glyph_height / 2 };
-    rect(layer, vec2_zero, size, Blue);
-    text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
+    draw_rect(layer, vec2_zero, size, Blue);
+    draw_text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
 
 
     vec2 list_start = path_start + make_vec(0.1, -0.1);
     vec2 list_pos = list_start;
     uint32 list_len = list_length(file_selector.current_files);
     for 0 .. list_len {
-        text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
+        draw_text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
         list_pos.y -= glyph_height * 1.2;
     }
 
@@ -314,7 +363,7 @@ void render_file_selection_menu(RenderLayer* layer) {
 
     file_selector.selected_line = index as uint32;
 
-    rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(size.x, glyph_height), opacity(White, 0.2));
+    draw_rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(size.x, glyph_height), opacity(White, 0.2));
 }
 
 

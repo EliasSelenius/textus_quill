@@ -1,0 +1,65 @@
+
+
+struct Image_Editor {
+    Image image;
+    uint32 tex_gl_handle;
+    Transform2D cam;
+}
+
+Image make_image(uint32 w, h) {
+    Image i = {};
+    i.width = w;
+    i.height = h;
+    i.pixels = calloc(w * h, sizeof Color);
+    for y: 0 .. h for x: 0 .. w {
+        i.pixels[y * w + x] = { random_range(0, 255) as uint8, random_range(0, 255) as uint8, random_range(0, 255) as uint8, 255 };
+    }
+
+    return i;
+}
+
+Image_Editor open_image(char* filename) {
+    Image_Editor ed = {};
+
+    uint32 w = 256;
+    uint32 h = 256;
+    // ed.image.width = w;
+    // ed.image.height = h;
+    // ed.image.pixels = calloc(w * h, sizeof Color);
+
+    // ed.image.pixels[0] = White;
+    // ed.image.pixels[w*h - 1] = White;
+
+    if filename ed.image = load_bitmap(filename);
+    else ed.image = make_image(w, h);
+
+    return ed;
+}
+
+void draw_img_editor(Image_Editor* ed, RenderLayer* l) {
+
+    { // GPU sync
+
+        if ed.tex_gl_handle == 0 {
+            glGenTextures(1, *ed.tex_gl_handle);
+        }
+
+        glBindTexture(GL_TEXTURE_2D, ed.tex_gl_handle);
+        set_wrap_mode(TextureWrapMode.repeat);
+        set_filter(TextureFilter.linear);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ed.image.width, ed.image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, ed.image.pixels);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D, 0);
+    }
+
+    Sprite s = {};
+    s.uv_offset = vec2_zero;
+    s.uv_scale = vec2_one;
+    s.tex = {ed.image.width, ed.image.height, ed.tex_gl_handle};
+    s.is_semi_transparent = false;
+
+    Transform2D tr = {scale=1};
+    draw_sprite(tr, 0, s, vec4_one, vec4_zero, vec4_zero);
+}
+
