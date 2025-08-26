@@ -2,17 +2,21 @@
 include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
 include "../pog/modules/System/files.pog";
+include "../plang/common/builtin/types.pog";
 
 include "src/text_editor.pog";
 include "src/textbuffer.pog";
 include "src/theme.pog";
 include "src/projects.pog";
-
 include "src/image_editor.pog";
+
+include "../pog/compiler/src/tokenizer.pog";
+include "../pog/compiler/src/ast.pog";
+
 
 // Compile:
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
-// ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -O0 -g -fsanitize=address -fno-omit-frame-pointer
+// ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -lShlwapi.lib -O0 -g -fsanitize=address -fno-omit-frame-pointer
 
 
 /*
@@ -40,7 +44,6 @@ include "src/image_editor.pog";
     - bind_units()
     - cleanup after a unit so that rebinding can take place (use arenas)
 
-    - scroll and click to place cursor
 
     priority:
         - file navigator
@@ -153,6 +156,22 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
 
 Transform2D camera_to_dispatch = {scale=600};
 RenderLayer ui_layer;
+RenderLayer static_ui;
+
+enum EditorKind { text; image; }
+
+struct Editor {
+    EditorKind kind;
+    Image_Editor* imged;
+    Texteditor* txted;
+}
+
+Editor[..] editors = list_create(sizeof Editor);
+int32 current_editor_index = 0;
+
+Editor* current_editor() return *editors[current_editor_index];
+
+
 
 int32 main() {
 
@@ -192,15 +211,16 @@ int32 main() {
 
 
     {
-        file_selector.layer = create_layer();
-
         file_selector.text_field.buf = create_textbuffer();
         file_selector.text_field.cursor = {};
-
+        let cwd = get_cwd();
+        insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, cwd);
+        free(cwd.chars);
         update_files();
 
+        static_ui = create_layer();
         ui_layer = create_layer();
-        immediate_layer = *ui_layer;
+        immediate_layer = *static_ui;
     }
 
     let img_ed = open_image("../weekend_proj/assets/spritesheet.bmp");
@@ -228,9 +248,26 @@ int32 main() {
         let ed = active_editor;
         if ed {
 
+            let mouse_pos = local2world(ed.cam, Input.mouse_pos);
+
+            uint32 mouse_row = clamp(round(-mouse_pos.y / ed.glyph_height), 0, list_length(ed.buf.lines) - 1) as uint32;
+            uint32 mouse_col = clamp(round(mouse_pos.x / (ed.glyph_height*0.5)), 0, get_string_builder(*ed.buf, mouse_row).length) as uint32;
+
+            // draw_rect(*ui_layer, mouse_pos, make_vec2(ed.glyph_height), White);
+            // draw_text(*ui_layer, mouse_pos, ed.glyph_height, to_string(mouse_row), Black);
+
+            if mouse_pressed(Left_Mouse) {
+                ed.cursor.row = mouse_row;
+                ed.cursor.column = mouse_col;
+                if !key(GLFW_KEY_LEFT_SHIFT) {
+                    ed.cursor.row2 = ed.cursor.row;
+                    ed.cursor.column2 = ed.cursor.column;
+                }
+            }
+
             void zoom(Texteditor* ed, float32 zoom) {
                 const speed = 0.05;
-                ed.cam.scale *= 1.0 + speed*zoom;
+                ed.target_cam.scale *= 1.0 + speed*zoom;
             }
 
             if key(GLFW_KEY_LEFT_CONTROL) {
@@ -239,45 +276,47 @@ int32 main() {
 
             if mouse_scroll != 0.0 {
                 if key(GLFW_KEY_LEFT_CONTROL) {
-                    zoom(ed, mouse_scroll);
+                    zoom(ed, -mouse_scroll);
                 } else {
                     // ed.target_view_pos.y += mouse_scroll * 0.1;
-                    ed.target_cam.pos.y += mouse_scroll * 0.1;
+                    ed.target_cam.pos.y += mouse_scroll * 0.1 * ed.cam.scale;
                     ed.follow_cursor = false;
                 }
             }
 
 
             if ed.follow_cursor {
-                ed.target_cam.pos = calc_cursor_pos(ed);
+                let pos = calc_cursor_pos(ed);
 
                 float32 s = ed.cam.scale;
-                if ed.target_cam.pos.x > s*2  ed.target_cam.pos.x -= s*1;
-                else ed.target_cam.pos.x = s*1;
+                if pos.x > s*2  pos.x -= s*1;
+                else pos.x = s*1;
+
+                ed.target_cam.pos = pos;
             }
 
             float32 decay = 5;
             float32 dt = app.frame_time;
             exp_decay(*ed.cam.pos.y, ed.target_cam.pos.y, decay, dt);
             exp_decay(*ed.cam.pos.x, ed.target_cam.pos.x, decay, dt);
+            exp_decay(*ed.cam.scale, ed.target_cam.scale, decay, dt);
 
             draw_texteditor(*ui_layer, ed);
-            draw_tabs(*file_selector.layer, ed);
+            draw_tabs(*static_ui, ed);
 
-            ui_layer.ui_camera = ed.cam;
+            camera_to_dispatch = ed.cam;
 
         } else draw_project_selection_menu();
 
         if file_selector.open {
-            render_file_selection_menu(*file_selector.layer);
+            render_file_selection_menu(*static_ui);
         }
 
         // draw_img_editor(*img_ed, *ui_layer);
 
         dispatch_sprites(camera_to_dispatch);
-        // ui_layer.ui_camera = camera_to_dispatch;
-        dispatch_layer(*ui_layer);
-        dispatch_layer(*file_selector.layer);
+        dispatch_layer(*ui_layer, camera_to_dispatch);
+        dispatch_layer(*static_ui, {scale=1} as Transform2D);
 
         // const border_thickness = 0.005;
         // draw_rect(make_vec(-1, 0), make_vec(border_thickness, 2), Red);
@@ -308,8 +347,28 @@ void draw_tabs(RenderLayer* layer, Texteditor* ed) {
     }
 }
 
+enum FileNodeKind {
+    folder;
+    text;
+    binary;
+    model;
+    image;
+    executable;
+}
+
+struct FileNode {
+    FileNode* super_node;
+    FileNode*[..] sub_files;
+
+    FileNodeKind kind;
+
+    FileInfo file_info;
+
+}
+
+
+
 struct FileSelectorPanel {
-    RenderLayer layer;
     FileInfo* current_files; // list
     uint32 selected_line;
     bool open;
@@ -327,9 +386,10 @@ void update_files() {
         list_delete(file_selector.current_files);
     }
 
-    char* query = concat("*", file_selector.text_field.buf.lines[0].sb.content, "*");
+    char* query = file_selector.text_field.buf.lines[0].sb.content;
     print("query: ", query, "\n");
     file_selector.current_files = query_files(make_string(query));
+
     for 0 .. list_length(file_selector.current_files) {
         let file = file_selector.current_files[it];
         print(file, "\n");
@@ -337,11 +397,15 @@ void update_files() {
 }
 
 void render_file_selection_menu(RenderLayer* layer) {
-    vec2 size = make_vec(1.5, 1.8);
+    float32 width = 1.5;
+    UI_Rect bg_rect = {center=vec2_zero, size={width, 1.8}};
     const glyph_height = 0.04;
 
-    vec2 path_start = { -size.x / 2, size.y / 2 - glyph_height / 2 };
-    draw_rect(layer, vec2_zero, size, Blue);
+    draw_rect(layer, bg_rect, Blue);
+
+
+    vec2 path_start = top_left(bg_rect) + { glyph_height/4.0, -glyph_height/2.0 };
+    // vec2 path_start = { -size.x / 2, size.y / 2 - glyph_height / 2 };
     draw_text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
 
 
@@ -349,6 +413,8 @@ void render_file_selection_menu(RenderLayer* layer) {
     vec2 list_pos = list_start;
     uint32 list_len = list_length(file_selector.current_files);
     for 0 .. list_len {
+        UI_Rect rect = {size={width, glyph_height}};
+
         draw_text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
         list_pos.y -= glyph_height * 1.2;
     }
@@ -363,7 +429,7 @@ void render_file_selection_menu(RenderLayer* layer) {
 
     file_selector.selected_line = index as uint32;
 
-    draw_rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(size.x, glyph_height), opacity(White, 0.2));
+    draw_rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(width, glyph_height), opacity(White, 0.2));
 }
 
 

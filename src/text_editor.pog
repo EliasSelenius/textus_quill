@@ -7,6 +7,7 @@ struct Texteditor {
     Texteditor* next;
     Texteditor* prev;
 
+    Pog_Unit* unit;
 
     Transform2D cam;
     Transform2D target_cam;
@@ -96,19 +97,32 @@ void texteditor_save_file(Texteditor* ed) {
     print(sb.content, "\n\n");
     filewrite(file_name, sb.content);
 
-    { // parser test
-        let parser = init_parser();
-        parser_parse_source(parser, sb.content);
-        parse(parser);
+    // { // parser test
+    //     let parser = init_parser();
+    //     parser_parse_source(parser, sb.content);
+    //     parse(parser);
+    // }
+
+    {
+        if ed.unit {
+            arena_release(ed.unit.arena);
+        }
+        ed.unit = parse(sb.content);
+
+        let sb_ast = sb_create();
+        print_ast(*sb_ast, ed.unit);
+        print(to_string(sb_ast));
+        sb_free(sb_ast);
     }
 
-    sb_free(sb);
+    // sb_free(sb);
 }
 
 
 
 
 enum Tokenkind {
+    unknown;
     whitespace;
     word;
     keyword;
@@ -116,7 +130,6 @@ enum Tokenkind {
     number_literal;
     string_literal;
     comment;
-    unknown;
 }
 
 struct Token {
@@ -207,11 +220,25 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
     vec2 status_pos = pos - {height*0.5, 0};
     draw_rect(layer, status_pos, make_vec(height*0.5*0.3, height), status_color);
 
+    Token token = {};
     uint32 i = 0;
     while i < line.sb.length {
-        let token = get_next_token(*line.sb.content[i]);
+        token = get_next_token(*line.sb.content[i]);
         pos = draw_text(layer, pos, height, token.text, token_color(token.kind));
         i += token.text.length;
+    }
+
+    if token.kind == Tokenkind.whitespace {
+        float32 stride = height * 0.5;
+        UI_Rect r = {pos, {stride, height}};
+        r.size.x *= token.text.length;
+        r.center.x -= ((token.text.length as float32) * 0.5 + 0.5) * stride;
+        // 2 -- 0.5
+        // 3 -- 1
+        // 4 -- 1.5
+        // 5 -- 2
+        Color color = opacity(White, 0.1);
+        draw_rect(layer, r, color);
     }
 }
 
@@ -275,21 +302,89 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
 
     int32 row = round(-ed.cam.pos.y / ed.glyph_height) as int32;
     int32 page = floor(ed.cam.scale / ed.glyph_height) as int32 + 1; // +1 effectively makes that floor a ceil
-    uint32 row_start = max(row - page, 0) as uint32;
-    uint32 row_end = min(row + page, list_length(ed.buf.lines) as int32 - 1) as uint32;
+    int32 row_start = max(row - page, 0);
+    int32 row_end = min(row + page, list_length(ed.buf.lines) as int32 - 1);
 
-    for uint32 it : row_start .. row_end+1 {
+    for row_start .. row_end+1 {
         vec2 pos = {0, it * -ed.glyph_height};
-        draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, it + 1);
+        draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, (it + 1) as uint32);
     }
 
     draw_cursor(layer, ed, vec2_zero, ed.cursor);
+
+    void draw_ast_node(RenderLayer* layer, Texteditor* ed, Pog_Node* node, uint32 min_row, max_row) {
+        if node == null return;
+
+        let tok = node.token;
+        if node.name.kind != 0 tok = node.name;
+
+        bool draw_this_node = tok.row >= min_row and tok.row <= max_row;
+
+        if draw_this_node {
+            UI_Rect rect = {};
+            rect.center = calc_view_pos(ed, tok.row, tok.col);
+            rect.size = make_vec(ed.glyph_height*0.5, ed.glyph_height);
+
+            vec2 tr = top_right(rect);
+            tr.x += rect.size.x * (tok.data.str.length - 1);
+            rect = rect_pp(bottom_left(rect), tr);
+
+            bool is_hovering = hover(rect, local2world(ed.cam, Input.mouse_pos));
+
+            float32 opa = is_hovering ? 1.0 : 0.1;
+            Color color = node.kind == Pog_Nodekind.ERROR ? Red : White;
+            draw_rect(layer, rect, opacity(color, opa));
+
+            if is_hovering {
+                let sb_ast = sb_create();
+                print_node(0, *sb_ast, node);
+
+                uint32 lines = 0;
+                uint32 max_col = 1;
+                uint32 cur_col = 0;
+                for 0 .. sb_ast.length {
+                    char c = sb_ast.content[it];
+                    if c == '\n' {
+                        max_col = max(max_col, cur_col);
+                        cur_col = 0;
+                        lines++;
+                    } else {
+                        cur_col++;
+                    }
+                }
+
+                let tpr = Input.mouse_pos;
+                UI_Rect tip = rect_pp(tpr, tpr + {max_col*ed.glyph_height*0.5, -ed.glyph_height*lines} as vec2);
+                draw_rect(tip, Gray);
+                vec2 pos = tpr + {ed.glyph_height/4.0, -ed.glyph_height/2.0};
+                draw_text(pos, ed.glyph_height, to_string(sb_ast), White);
+
+                sb_free(sb_ast);
+            }
+        }
+
+        // if is_hovering return;
+
+        draw_ast_node(layer, ed, node.node1, min_row, max_row);
+        draw_ast_node(layer, ed, node.node2, min_row, max_row);
+        draw_ast_node(layer, ed, node.node3, min_row, max_row);
+        draw_ast_node(layer, ed, node.node4, min_row, max_row);
+
+        for 0 .. list_length(node.sub_nodes) {
+            draw_ast_node(layer, ed, node.sub_nodes[it], min_row, max_row);
+        }
+    }
+
+    if ed.unit {
+        for 0 .. list_length(ed.unit.top_level_nodes) {
+            let node = ed.unit.top_level_nodes[it];
+            draw_ast_node(layer, ed, node, row_start as uint32, row_end as uint32);
+        }
+    }
 }
 
 void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {
-
-    ed.follow_cursor = true;
-
+    Cursor old_cursor = ed.cursor;
     recive_keyboard_input(*ed.buf, *ed.cursor, key, mods);
 
     switch (mods) {
@@ -312,5 +407,9 @@ void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {
 
         case GLFW_MOD_ALT: switch (key) {
         } break;
+    }
+
+    if memcmp(*ed.cursor, *old_cursor, sizeof Cursor) != 0 {
+        ed.follow_cursor = true;
     }
 }

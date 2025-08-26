@@ -20,6 +20,7 @@ Image make_image(uint32 w, h) {
 
 Image_Editor open_image(char* filename) {
     Image_Editor ed = {};
+    ed.cam = {scale=600};
 
     uint32 w = 256;
     uint32 h = 256;
@@ -46,12 +47,15 @@ void draw_img_editor(Image_Editor* ed, RenderLayer* l) {
 
         glBindTexture(GL_TEXTURE_2D, ed.tex_gl_handle);
         set_wrap_mode(TextureWrapMode.repeat);
-        set_filter(TextureFilter.linear);
+        set_filter(TextureFilter.nearest);
 
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, ed.image.width, ed.image.height, 0, GL_RGBA, GL_UNSIGNED_BYTE, ed.image.pixels);
         glGenerateMipmap(GL_TEXTURE_2D);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
+
+    mouse_drag_control(*ed.cam);
+    camera_to_dispatch = ed.cam;
 
     Sprite s = {};
     s.uv_offset = vec2_zero;
