@@ -17,6 +17,7 @@ include "../pog/compiler/src/ast.pog";
 // Compile:
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
 // ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -lShlwapi.lib -O0 -g -fsanitize=address -fno-omit-frame-pointer
+// ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -lShlwapi.lib -O0 -g
 
 
 /*
@@ -29,6 +30,7 @@ include "../pog/compiler/src/ast.pog";
     - integrated REPL: entire type system and API of the currently loaded project is exposed to REPL
     - memory graph
     - proc call tracer
+        - trace opengl calls and recreate frame in debugger like renderdoc or qapitrace
 */
 
 /* TODO:
@@ -59,27 +61,27 @@ uint32 on_text_input_call_count = 0;
 char* text_input_this_frame = malloc(128);
 
 
-void on_event(AppEvent event, AppEventData data) switch (event) {
+void on_event(AppEvent event) switch (event.kind) {
     case .file_drop: {
         glfwFocusWindow(app.main_window);
 
-        for i : 0 .. data.files.length {
-            let ed = texteditor_open_file(data.files[i]);
+        for i : 0 .. event.files.length {
+            let ed = texteditor_open_file(event.files[i]);
         }
     } break;
 
     case .key_repeat:
     case .key_press: {
-        // print("[INFO]: \"", glfwGetKeyName(GLFW_KEY_UNKNOWN, data.scancode), "\" scancode: ", data.scancode, " key: ", data.key, " mods: ", data.mods, "\n");
+        // print("[INFO]: \"", glfwGetKeyName(Key.unknown, event.scancode), "\" scancode: ", event.scancode, " key: ", event.key, " mods: ", event.mods, "\n");
 
 
         if file_selector.open {
-            switch data.key {
-                case GLFW_KEY_UP:   file_selector.selected_line--; break;
-                case GLFW_KEY_DOWN: file_selector.selected_line++; break;
-                case GLFW_KEY_ENTER: {
-                    let file = file_selector.current_files[file_selector.selected_line];
-                    switch file.file_kind {
+            switch (event.key) {
+                case .up:   file_selector.file_index--; break;
+                case .down: file_selector.file_index++; break;
+                case .enter: {
+                    let file = file_selector.files[file_selector.file_index];
+                    switch (file.file_kind) {
                         case .file: {
                             texteditor_open_file(file.path.chars);
                             file_selector.open = false;
@@ -93,27 +95,27 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
                     }
 
                 } break;
-                default: recive_keyboard_input(*file_selector.text_field, data.key, data.mods); break;
+                default: recive_keyboard_input(*file_selector.text_field, event.key, event.mods); break;
             }
 
             update_files();
 
         } else if active_editor {
-            text_editor_recive_keyboard_input(active_editor, data.key, data.mods);
+            text_editor_recive_keyboard_input(active_editor, event.key, event.mods);
         }
 
-        switch (data.mods) {
-            case 0: switch (data.key) {
-                case GLFW_KEY_ESCAPE: file_selector.open = false; break;
+        switch (event.mods) {
+            case .none: switch (event.key) {
+                case .escape: file_selector.open = false; break;
             } break;
 
-            case GLFW_MOD_CONTROL: switch (data.key) {
-                case GLFW_KEY_PAGE_UP: if active_editor.prev active_editor = active_editor.prev; break;
-                case GLFW_KEY_PAGE_DOWN: if active_editor.next active_editor = active_editor.next; break;
+            case .control: switch (event.key) {
+                case .page_up: if active_editor.prev active_editor = active_editor.prev; break;
+                case .page_down: if active_editor.next active_editor = active_editor.next; break;
 
-                case GLFW_KEY_P: file_selector.open = true; update_files(); break;
+                case .P: file_selector.open = true; update_files(); break;
 
-                case GLFW_KEY_T: {
+                case .T: {
                     ColorTheme*[] themes = {
                         *theme_kimbie_dark,
                         *theme_programer_art
@@ -123,21 +125,21 @@ void on_event(AppEvent event, AppEventData data) switch (event) {
                     set_theme(themes[i++ % themes.length]);
                 } break;
 
-                case GLFW_KEY_N: texteditor_new(); break;
-                case GLFW_KEY_W: if active_editor texteditor_free(active_editor); break;
+                case .N: texteditor_new(); break;
+                case .W: if active_editor texteditor_free(active_editor); break;
             } break;
 
-            case GLFW_MOD_ALT: switch (data.key) {
+            case .alt: switch (event.key) {
             } break;
         }
     } break;
 
     case .text_input: {
         char c = '?';
-        if data.unicode_codepoint <= 127 {
-            c = data.unicode_codepoint as char;
+        if event.unicode_codepoint <= 127 {
+            c = event.unicode_codepoint as char;
         } else {
-            print("[ERROR]: Unicode character ", to_string(data.unicode_codepoint), " not supported.\n");
+            print("[ERROR]: Unicode character ", to_string(event.unicode_codepoint), " not supported.\n");
         }
 
 
@@ -256,10 +258,10 @@ int32 main() {
             // draw_rect(*ui_layer, mouse_pos, make_vec2(ed.glyph_height), White);
             // draw_text(*ui_layer, mouse_pos, ed.glyph_height, to_string(mouse_row), Black);
 
-            if mouse_pressed(Left_Mouse) {
+            if mouse_pressed(MouseButton.Left) {
                 ed.cursor.row = mouse_row;
                 ed.cursor.column = mouse_col;
-                if !key(GLFW_KEY_LEFT_SHIFT) {
+                if !key_down(Key.left_shift) {
                     ed.cursor.row2 = ed.cursor.row;
                     ed.cursor.column2 = ed.cursor.column;
                 }
@@ -270,12 +272,12 @@ int32 main() {
                 ed.target_cam.scale *= 1.0 + speed*zoom;
             }
 
-            if key(GLFW_KEY_LEFT_CONTROL) {
+            if key_down(Key.left_control) {
                 zoom(ed, input_axis('-', '='));
             }
 
             if mouse_scroll != 0.0 {
-                if key(GLFW_KEY_LEFT_CONTROL) {
+                if key_down(Key.left_control) {
                     zoom(ed, -mouse_scroll);
                 } else {
                     // ed.target_view_pos.y += mouse_scroll * 0.1;
@@ -309,7 +311,7 @@ int32 main() {
         } else draw_project_selection_menu();
 
         if file_selector.open {
-            render_file_selection_menu(*static_ui);
+            render_file_selection_menu();
         }
 
         // draw_img_editor(*img_ed, *ui_layer);
@@ -369,8 +371,8 @@ struct FileNode {
 
 
 struct FileSelectorPanel {
-    FileInfo* current_files; // list
-    uint32 selected_line;
+    FileInfo[..] files;
+    uint32 file_index;
     bool open;
 
     TextInputField text_field;
@@ -379,57 +381,80 @@ struct FileSelectorPanel {
 FileSelectorPanel file_selector;
 
 void update_files() {
-    if file_selector.current_files {
-        for 0 .. list_length(file_selector.current_files) {
-            free(file_selector.current_files[it].path.chars); // TODO: should realy be using some kind of temp allocator instead
+    if file_selector.files {
+        for 0 .. list_length(file_selector.files) {
+            free(file_selector.files[it].path.chars); // TODO: should realy be using some kind of temp allocator instead
         }
-        list_delete(file_selector.current_files);
+        list_delete(file_selector.files);
     }
 
-    char* query = file_selector.text_field.buf.lines[0].sb.content;
-    print("query: ", query, "\n");
-    file_selector.current_files = query_files(make_string(query));
+    string query = to_string(file_selector.text_field.buf.lines[0].sb);
+    string file_name = trim_start(substr_to_end(query, '\\'), 1);
+    string dir_path  = query;
+    dir_path.length -= file_name.length;
 
-    for 0 .. list_length(file_selector.current_files) {
-        let file = file_selector.current_files[it];
+    print("query     = \"", query, "\"\n");
+    print("file_name = \"", file_name, "\"\n");
+    print("dir_path  = \"", dir_path, "\"\n");
+
+    file_selector.files = enumerate_directory(dir_path);
+
+    for 0 .. list_length(file_selector.files) {
+        let file = file_selector.files[it];
         print(file, "\n");
     }
 }
 
-void render_file_selection_menu(RenderLayer* layer) {
+void render_file_selection_menu() {
     float32 width = 1.5;
-    UI_Rect bg_rect = {center=vec2_zero, size={width, 1.8}};
     const glyph_height = 0.04;
+    UI_Rect rect_background = {center=vec2_zero, size={width, 1.8}};
 
-    draw_rect(layer, bg_rect, Blue);
+    draw_rect(rect_background, opacity(Blue, 0.6));
 
+    string query = to_string(file_selector.text_field.buf.lines[0].sb);
+    string file_name = trim_start(substr_to_end(query, '\\'), 1);
+    string dir_path  = query;
+    dir_path.length -= file_name.length;
 
-    vec2 path_start = top_left(bg_rect) + { glyph_height/4.0, -glyph_height/2.0 };
-    // vec2 path_start = { -size.x / 2, size.y / 2 - glyph_height / 2 };
-    draw_text(layer, path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
+    UI_Rect rect_path = draw_text(rect_background, -1, 1, glyph_height, query, White);
+
+    vec2 path_start = top_left(rect_background) + { glyph_height/4.0, -glyph_height/2.0 };
+    // draw_text(path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
 
 
     vec2 list_start = path_start + make_vec(0.1, -0.1);
     vec2 list_pos = list_start;
-    uint32 list_len = list_length(file_selector.current_files);
-    for 0 .. list_len {
-        UI_Rect rect = {size={width, glyph_height}};
+    uint32 list_len = list_length(file_selector.files);
 
-        draw_text(layer, list_pos, glyph_height, file_selector.current_files[it].path, White);
-        list_pos.y -= glyph_height * 1.2;
-    }
-
-    int32 index = file_selector.selected_line as int32;
+    int32 index = file_selector.file_index as int32;
     int32 max_index = (list_len-1) as int32;
     if index < 0 {
         index = max_index;
     } else if index > max_index {
         index = 0;
     }
+    file_selector.file_index = index as uint32;
 
-    file_selector.selected_line = index as uint32;
+    for 0 .. list_len {
+        UI_Rect rect = {size={width, glyph_height}};
 
-    draw_rect(layer, make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.selected_line), make_vec(width, glyph_height), opacity(White, 0.2));
+        FileInfo* info = *file_selector.files[it];
+
+        // uint32 ldist = lev(file_name, info.name);
+        uint32 ldist = lev_(file_name, info.name);
+
+        bool match = starts_with(info.name, file_name);
+
+        Color color = Gray;
+        if match color = White;
+
+        draw_text(list_pos - make_vec(glyph_height*2.0, 0), glyph_height*0.8, to_string(ldist), Cyan);
+        draw_text(list_pos, glyph_height, info.path, color);
+        list_pos.y -= glyph_height * 1.2;
+    }
+
+    draw_rect(make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.file_index), make_vec(width, glyph_height), opacity(White, 0.2));
 }
 
 

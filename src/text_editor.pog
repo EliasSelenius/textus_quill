@@ -383,7 +383,7 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
     }
 }
 
-void text_editor_recive_keyboard_input(Texteditor* ed, int32 key, mods) {
+void text_editor_recive_keyboard_input(Texteditor* ed, Key key, Keymods mods) {
     Cursor old_cursor = ed.cursor;
     recive_keyboard_input(*ed.buf, *ed.cursor, key, mods);
 

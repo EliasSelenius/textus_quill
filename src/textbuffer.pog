@@ -85,7 +85,7 @@ Textbuffer create_textbuffer(char* buffer) {
 void textbuffer_init(Textbuffer* buf, char* current) {
     char* start_of_line = current;
 
-    TextbufferLine* line = buf.lines;
+    TextbufferLine* line = *buf.lines[0];
     uint32 row = 0;
 
     while @current {
@@ -212,7 +212,7 @@ void jump_cursor_vertical(Textbuffer* buf, Cursor* cursor, int32 dir) {
 TextbufferLine* insert_new_line(Textbuffer* buf, uint32 row) {
     TextbufferLine line = {};
     line.sb = sb_create();
-    return list_insert(*buf.lines as void**, row, *line) as TextbufferLine*;
+    return list_insert(*buf.lines, row, *line);
 }
 
 void insert(Textbuffer* buf, Cursor* cursor, char* str) insert(buf, cursor, make_string(str));
@@ -342,9 +342,9 @@ void delete_backward(Textbuffer* buf, Cursor* cursor) {
 // }
 
 
-void recive_keyboard_input(TextInputField* field, int32 key, mods) recive_keyboard_input(*field.buf, *field.cursor, key, mods);
+void recive_keyboard_input(TextInputField* field, Key key, Keymods mods) recive_keyboard_input(*field.buf, *field.cursor, key, mods);
 
-void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, int32 key, mods) {
+void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mods) {
 
     bool shift = (mods & GLFW_MOD_SHIFT) != 0;
 

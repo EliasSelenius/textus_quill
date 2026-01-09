@@ -1,5 +1,5 @@
 
-Project* projects = list_create(sizeof Project);
+Project[..] projects = list_create(sizeof Project);
 
 struct Project {
     string root_file_path;
