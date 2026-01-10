@@ -77,17 +77,23 @@ void on_event(AppEvent event) switch (event.kind) {
 
         if file_selector.open {
             switch (event.key) {
-                case .up:   file_selector.file_index--; break;
-                case .down: file_selector.file_index++; break;
+                case .up:   file_selector.entry_index--; break;
+                case .down: file_selector.entry_index++; break;
                 case .enter: {
-                    let file = file_selector.files[file_selector.file_index];
+                    let entry = file_selector.entries[file_selector.entry_index];
+                    let file = file_selector.files[entry.file_index];
                     switch (file.file_kind) {
                         case .file: {
                             texteditor_open_file(file.path.chars);
                             file_selector.open = false;
                         } break;
                         case .folder: {
-
+                            let sb = get_string_builder(*file_selector.text_field.buf, 0);
+                            sb_clear(sb);
+                            file_selector.text_field.cursor = {};
+                            insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, file.path);
+                            insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, "\\");
+                            update_files(*file_selector);
                         } break;
                         case .symlink: {
 
@@ -95,10 +101,12 @@ void on_event(AppEvent event) switch (event.kind) {
                     }
 
                 } break;
-                default: recive_keyboard_input(*file_selector.text_field, event.key, event.mods); break;
+                default: {
+                    recive_keyboard_input(*file_selector.text_field, event.key, event.mods);
+                    update_files(*file_selector);
+                } break;
             }
 
-            update_files();
 
         } else if active_editor {
             text_editor_recive_keyboard_input(active_editor, event.key, event.mods);
@@ -113,7 +121,7 @@ void on_event(AppEvent event) switch (event.kind) {
                 case .page_up: if active_editor.prev active_editor = active_editor.prev; break;
                 case .page_down: if active_editor.next active_editor = active_editor.next; break;
 
-                case .P: file_selector.open = true; update_files(); break;
+                case .P: file_selector.open = true; update_files(*file_selector); break;
 
                 case .T: {
                     ColorTheme*[] themes = {
@@ -145,7 +153,7 @@ void on_event(AppEvent event) switch (event.kind) {
 
         if file_selector.open {
             insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, c);
-            update_files();
+            update_files(*file_selector);
         } else if active_editor {
             write(active_editor, c);
         }
@@ -218,7 +226,9 @@ int32 main() {
         let cwd = get_cwd();
         insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, cwd);
         free(cwd.chars);
-        update_files();
+        update_files(*file_selector);
+
+        file_selector.color_background = opacity(Blue, 0.8);
 
         static_ui = create_layer();
         ui_layer = create_layer();
@@ -298,7 +308,7 @@ int32 main() {
             }
 
             float32 decay = 5;
-            float32 dt = app.frame_time;
+            float32 dt = deltatime();
             exp_decay(*ed.cam.pos.y, ed.target_cam.pos.y, decay, dt);
             exp_decay(*ed.cam.pos.x, ed.target_cam.pos.x, decay, dt);
             exp_decay(*ed.cam.scale, ed.target_cam.scale, decay, dt);
@@ -311,7 +321,7 @@ int32 main() {
         } else draw_project_selection_menu();
 
         if file_selector.open {
-            render_file_selection_menu();
+            render_file_selection_menu(*file_selector);
         }
 
         // draw_img_editor(*img_ed, *ui_layer);
@@ -370,91 +380,138 @@ struct FileNode {
 
 
 
+struct FileEntry {
+    uint32 file_index;
+    uint32 lev_dist;
+    float32 hover_t;
+}
+
 struct FileSelectorPanel {
     FileInfo[..] files;
-    uint32 file_index;
+    FileEntry* entries;
+    uint32 entry_index;
     bool open;
 
     TextInputField text_field;
+
+    Color color_background;
 }
 
 FileSelectorPanel file_selector;
 
-void update_files() {
-    if file_selector.files {
-        for 0 .. list_length(file_selector.files) {
-            free(file_selector.files[it].path.chars); // TODO: should realy be using some kind of temp allocator instead
+void decompose_path(string full_path, string* dir, file) {
+    @file = trim_start(substr_to_end(full_path, '\\'), 1);
+    @dir  = full_path;
+    dir.length -= file.length;
+}
+
+void update_files(FileSelectorPanel* fs) {
+    if fs.files {
+        for 0 .. list_length(fs.files) {
+            free(fs.files[it].path.chars);
         }
-        list_delete(file_selector.files);
+        list_delete(fs.files);
     }
 
-    string query = to_string(file_selector.text_field.buf.lines[0].sb);
-    string file_name = trim_start(substr_to_end(query, '\\'), 1);
-    string dir_path  = query;
-    dir_path.length -= file_name.length;
+    string query = to_string(fs.text_field.buf.lines[0].sb);
+    string dir_path, file_name;
+    decompose_path(query, *dir_path, *file_name);
 
     print("query     = \"", query, "\"\n");
     print("file_name = \"", file_name, "\"\n");
     print("dir_path  = \"", dir_path, "\"\n");
 
-    file_selector.files = enumerate_directory(dir_path);
+    fs.files = enumerate_directory(dir_path);
 
-    for 0 .. list_length(file_selector.files) {
-        let file = file_selector.files[it];
-        print(file, "\n");
+    uint32 files_len = list_length(fs.files);
+    fs.entries = realloc(fs.entries, files_len * sizeof FileEntry);
+    fs.entry_index = 0;
+
+    for 0 .. files_len {
+        FileEntry* entry = *fs.entries[it];
+        FileInfo*  info  = *fs.files[it];
+        entry.file_index = it;
+        entry.hover_t = 0.0;
+
+        let ld = lev_(file_name, info.name);
+        entry.lev_dist = ld;
     }
+
+    int32 lev_dist_comparer(void* a, b) {
+        let fa = a as FileEntry*;
+        let fb = b as FileEntry*;
+
+        return (fa.lev_dist - fb.lev_dist) as int32;
+    }
+    qsort(fs.entries, files_len, sizeof FileEntry, lev_dist_comparer);
 }
 
-void render_file_selection_menu() {
+void render_file_selection_menu(FileSelectorPanel* fs) {
+    let dt = deltatime();
+
     float32 width = 1.5;
     const glyph_height = 0.04;
     UI_Rect rect_background = {center=vec2_zero, size={width, 1.8}};
+    UI_Rect rect_list = pad_top(rect_background, glyph_height);
+    UI_Rect rect_first_entry = child(rect_list, 0, 1, width, glyph_height * 1.2);
 
-    draw_rect(rect_background, opacity(Blue, 0.6));
-
-    string query = to_string(file_selector.text_field.buf.lines[0].sb);
-    string file_name = trim_start(substr_to_end(query, '\\'), 1);
-    string dir_path  = query;
-    dir_path.length -= file_name.length;
-
-    UI_Rect rect_path = draw_text(rect_background, -1, 1, glyph_height, query, White);
-
-    vec2 path_start = top_left(rect_background) + { glyph_height/4.0, -glyph_height/2.0 };
-    // draw_text(path_start, glyph_height, to_string(file_selector.text_field.buf.lines[0].sb), White);
+    float32 path_padding = rect_first_entry.size.y * 4.0;
 
 
-    vec2 list_start = path_start + make_vec(0.1, -0.1);
-    vec2 list_pos = list_start;
-    uint32 list_len = list_length(file_selector.files);
+    draw_rect(rect_background, fs.color_background);
 
-    int32 index = file_selector.file_index as int32;
+    string query = to_string(fs.text_field.buf.lines[0].sb);
+    string dir_path, file_name;
+    decompose_path(query, *dir_path, *file_name);
+
+    {
+        vec2 p = text_start_pos(pad_left(rect_background, path_padding), -1, 1, glyph_height, query);
+        p = draw_text(p, glyph_height, dir_path,  Gray);
+        p = draw_text(p, glyph_height, file_name, White);
+
+        // draw_text(rect_background, -1, 1, glyph_height, query, White);
+    }
+
+    uint32 list_len = list_length(fs.files);
+
+    int32 index = fs.entry_index as int32;
     int32 max_index = (list_len-1) as int32;
     if index < 0 {
         index = max_index;
     } else if index > max_index {
         index = 0;
     }
-    file_selector.file_index = index as uint32;
+    fs.entry_index = index as uint32;
+
+    if list_len  fs.entries[fs.entry_index].hover_t = 1.0;
 
     for 0 .. list_len {
-        UI_Rect rect = {size={width, glyph_height}};
+        FileEntry* entry = *fs.entries[it];
+        FileInfo* info = *fs.files[entry.file_index];
 
-        FileInfo* info = *file_selector.files[it];
-
-        // uint32 ldist = lev(file_name, info.name);
-        uint32 ldist = lev_(file_name, info.name);
+        UI_Rect rect_entry = translate(rect_first_entry, 0, -rect_first_entry.size.y * it);
 
         bool match = starts_with(info.name, file_name);
-
         Color color = Gray;
-        if match color = White;
+        // if match color = White;
 
-        draw_text(list_pos - make_vec(glyph_height*2.0, 0), glyph_height*0.8, to_string(ldist), Cyan);
-        draw_text(list_pos, glyph_height, info.path, color);
-        list_pos.y -= glyph_height * 1.2;
+        string txt = to_string(entry.lev_dist);
+        float32 gh = glyph_height*0.8;
+        draw_text(text_start_pos(rect_entry, -1, 0, gh, txt), gh, txt, Cyan);
+
+        string dir, file;
+        decompose_path(info.path, *dir, *file);
+
+        vec2 p = text_start_pos(pad_left(rect_entry, path_padding), -1, 0, glyph_height, info.path);
+        p = draw_text(p, glyph_height, dir,  Gray);
+        p = draw_text(p, glyph_height, file, White);
+
+        float32 alpha = lerp(entry.hover_t, 0, 0.2);
+        Color color_hover = opacity(White, alpha);
+        draw_rect(rect_entry, color_hover);
+
+        entry.hover_t = exp_decay(entry.hover_t, 0, 5, dt);
     }
-
-    draw_rect(make_vec(0, list_start.y + glyph_height * -1.2 * file_selector.file_index), make_vec(width, glyph_height), opacity(White, 0.2));
 }
 
 
