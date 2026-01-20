@@ -39,6 +39,8 @@ include "../pog/compiler/src/ast.pog";
     - display binary file
     - line color status in margin (is unsaved, is untracked addition for source controll)
     - measure words per minute
+    - scrollbar
+
 
     intelisense engine:
     - texteditor internal text format -> tokens for parser
@@ -48,7 +50,6 @@ include "../pog/compiler/src/ast.pog";
 
 
     priority:
-        - file navigator
         - auto indentation when hit enter
 
 
@@ -118,8 +119,18 @@ void on_event(AppEvent event) switch (event.kind) {
             } break;
 
             case .control: switch (event.key) {
-                case .page_up: if active_editor.prev active_editor = active_editor.prev; break;
-                case .page_down: if active_editor.next active_editor = active_editor.next; break;
+                case .page_up: {
+                    if active_editor.prev {
+                        active_editor = active_editor.prev;
+                        active_editor.cam.pos.x = 0;
+                    }
+                } break;
+                case .page_down: {
+                    if active_editor.next {
+                        active_editor = active_editor.next;
+                        active_editor.cam.pos.x = 0;
+                    }
+                } break;
 
                 case .P: file_selector.open = true; update_files(*file_selector); break;
 
@@ -297,17 +308,21 @@ int32 main() {
             }
 
 
-            if ed.follow_cursor {
+            {
                 let pos = calc_cursor_pos(ed);
 
                 float32 s = ed.cam.scale;
                 if pos.x > s*2  pos.x -= s*1;
-                else pos.x = s*1;
+                else pos.x = s * app.width_over_height/2.0;
 
-                ed.target_cam.pos = pos;
+                float32 pad = ed.glyph_height*2  +  (ed.glyph_height * 0.7)/2.0 * 5;
+
+                ed.target_cam.pos.x = max((app.width_over_height)*s  - pad, pos.x);
+                if ed.follow_cursor  ed.target_cam.pos.y = pos.y;
+
             }
 
-            float32 decay = 5;
+            static float32 decay = 30;
             float32 dt = deltatime();
             exp_decay(*ed.cam.pos.y, ed.target_cam.pos.y, decay, dt);
             exp_decay(*ed.cam.pos.x, ed.target_cam.pos.x, decay, dt);
@@ -344,19 +359,29 @@ int32 main() {
 
 void draw_tabs(RenderLayer* layer, Texteditor* ed) {
     const tab_text_height = 0.05;
-    vec2 pos = app.top_left;
-    pos.y -= tab_text_height * 0.5;
-    pos.x += tab_text_height * 0.5;
+    vec2 pos = app.top_left + make_vec(tab_text_height, -tab_text_height) * 0.5;
     let current_ed = ed;
     loop: {
-        char* name = current_ed.file_name.chars ? current_ed.file_name.chars : "untitled";
-        pos = draw_text(layer, pos, tab_text_height, name, White);
+        string full_path = current_ed.file_name.chars ? current_ed.file_name : make_string("untitled");
 
+        string path, file;
+        decompose_path(full_path, *path, *file);
+
+        pos = draw_text(layer, pos, tab_text_height, file, White);
         pos.x += tab_text_height * 2;
+
+        if current_ed == active_editor {
+            vec2 p = app.bottom_left + make_vec2(tab_text_height * 0.5);
+            draw_text(layer, p, tab_text_height, full_path, White);
+        }
 
         current_ed = current_ed.next;
         if current_ed != ed goto loop;
     }
+}
+
+void draw_codebase(Pog_Codebase* cb) {
+
 }
 
 enum FileNodeKind {
@@ -400,7 +425,11 @@ struct FileSelectorPanel {
 FileSelectorPanel file_selector;
 
 void decompose_path(string full_path, string* dir, file) {
-    @file = trim_start(substr_to_end(full_path, '\\'), 1);
+    string case1 = substr_to_end(full_path, '\\');
+    string case2 = substr_to_end(full_path, '/');
+    string f = case1.length < case2.length ? case1 : case2;
+
+    @file = trim_start(f, 1);
     @dir  = full_path;
     dir.length -= file.length;
 }
@@ -452,7 +481,7 @@ void render_file_selection_menu(FileSelectorPanel* fs) {
     float32 width = 1.5;
     const glyph_height = 0.04;
     UI_Rect rect_background = {center=vec2_zero, size={width, 1.8}};
-    UI_Rect rect_list = pad_top(rect_background, glyph_height);
+    UI_Rect rect_list = pad_top(rect_background, glyph_height * 2);
     UI_Rect rect_first_entry = child(rect_list, 0, 1, width, glyph_height * 1.2);
 
     float32 path_padding = rect_first_entry.size.y * 4.0;

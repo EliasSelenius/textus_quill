@@ -1,5 +1,6 @@
 
 Texteditor* active_editor;
+Pog_Codebase codebase = make_codebase();
 
 struct Texteditor {
     string file_name;
@@ -7,7 +8,10 @@ struct Texteditor {
     Texteditor* next;
     Texteditor* prev;
 
+    Pog_Node* node_hover;
+    Pog_Node* node_cursor;
     Pog_Unit* unit;
+    StringBuilder sb_buffer;
 
     Transform2D cam;
     Transform2D target_cam;
@@ -42,7 +46,7 @@ Texteditor* texteditor_new() {
     ed.target_cam = ed.cam;
 
     ed.buf = create_textbuffer();
-    ed.glyph_height = 0.05;
+    ed.glyph_height = 0.035;
 
     if active_editor == null {
         active_editor = ed;
@@ -87,35 +91,30 @@ void texteditor_free(Texteditor* ed) {
 }
 
 void texteditor_save_file(Texteditor* ed) {
-
-    StringBuilder sb = sb_create();
-    textbuffer_to_string(*ed.buf, *sb);
+    if ed.sb_buffer.content == null   ed.sb_buffer = sb_create();
+    sb_clear(*ed.sb_buffer);
+    textbuffer_to_string(*ed.buf, *ed.sb_buffer);
 
     let file_name = ed.file_name.chars ? ed.file_name.chars : "untitled.pog";
-
     print("SAVING: ", file_name, "\n");
-    print(sb.content, "\n\n");
-    filewrite(file_name, sb.content);
+    print(ed.sb_buffer.content, "\n\n");
+    filewrite(file_name, ed.sb_buffer.content);
 
-    // { // parser test
-    //     let parser = init_parser();
-    //     parser_parse_source(parser, sb.content);
-    //     parse(parser);
-    // }
+    if ed.unit   delete_unit(ed.unit);
+    ed.unit = parse(ed.sb_buffer.content);
+
+    list_clear(codebase.units);
+    list_clear(codebase.types);
+    list_clear(codebase.procs);
+
+    add_unit(*codebase, ed.unit);
 
     {
-        if ed.unit {
-            arena_release(ed.unit.arena);
-        }
-        ed.unit = parse(sb.content);
-
         let sb_ast = sb_create();
         print_ast(*sb_ast, ed.unit);
         print(to_string(sb_ast));
         sb_free(sb_ast);
     }
-
-    // sb_free(sb);
 }
 
 
@@ -243,7 +242,6 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
 }
 
 void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
-    vec2 glyph_size = { ed.glyph_height * 0.5, ed.glyph_height };
     Color cursor_color = opacity(White, 0.4);
 
     uint32 min_row = cursor.row;
@@ -284,13 +282,11 @@ void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
         }
     }
 
-
-
-    let size = glyph_size;
-    size.x *= 0.1;
-    vec2 p = calc_cursor_pos(ed);
-    p.x -= glyph_size.x / 2;
-    draw_rect(layer, add(pos, p), size, White);
+    float32 px = 2.0 / app.window_height * ed.cam.scale;
+    UI_Rect rect_cursor = {};
+    rect_cursor.center = pos + calc_cursor_pos(ed) + {-ed.glyph_height / 4, 0};
+    rect_cursor.size = { 2*px, ed.glyph_height };
+    draw_rect(layer, rect_cursor, White);
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
         draw_cursor_line(layer, ed, pos, cursor.row, 0, 1000, opacity(White, 0.1));
@@ -318,6 +314,13 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         let tok = node.token;
         if node.name.kind != 0 tok = node.name;
 
+        if ed.cursor.row == tok.row {
+            uint32 col = ed.cursor.column;
+            if col >= tok.col and col < tok.col + tok.data.str.length {
+                ed.node_cursor = node;
+            }
+        }
+
         bool draw_this_node = tok.row >= min_row and tok.row <= max_row;
 
         if draw_this_node {
@@ -336,6 +339,8 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
             draw_rect(layer, rect, opacity(color, opa));
 
             if is_hovering {
+                ed.node_hover = node;
+
                 let sb_ast = sb_create();
                 print_node(0, *sb_ast, node);
 
@@ -375,11 +380,27 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         }
     }
 
+    ed.node_hover = null;
+    ed.node_cursor = null;
     if ed.unit {
         for 0 .. list_length(ed.unit.top_level_nodes) {
             let node = ed.unit.top_level_nodes[it];
             draw_ast_node(layer, ed, node, row_start as uint32, row_end as uint32);
         }
+    }
+
+    if ed.node_cursor {
+        let node = ed.node_cursor;
+        Pog_Token tok = node.name.kind != 0 ? node.name : node.token;
+        // switch node.kind {
+        //     case .Stmt_Procedure: 
+        //     case .
+        // }
+        UI_Rect rect = {};
+        rect.size = text_size(tok.data.str, ed.glyph_height);
+        rect.center = calc_view_pos(ed, tok.row, tok.col) + make_vec(rect.size.x/2.0, ed.glyph_height);
+
+        draw_rect(layer, rect, White);
     }
 }
 
