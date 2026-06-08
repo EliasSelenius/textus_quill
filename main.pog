@@ -1,7 +1,6 @@
 
 include "../plang/common/compiler.pog";
 include "../grax/grax.pog";
-include "../pog/modules/System/files.pog";
 include "../plang/common/builtin/types.pog";
 
 include "src/text_editor.pog";
@@ -423,16 +422,6 @@ struct FileSelectorPanel {
 }
 
 FileSelectorPanel file_selector;
-
-void decompose_path(string full_path, string* dir, file) {
-    string case1 = substr_to_end(full_path, '\\');
-    string case2 = substr_to_end(full_path, '/');
-    string f = case1.length < case2.length ? case1 : case2;
-
-    @file = trim_start(f, 1);
-    @dir  = full_path;
-    dir.length -= file.length;
-}
 
 void update_files(FileSelectorPanel* fs) {
     if fs.files {
