@@ -118,97 +118,6 @@ void texteditor_save_file(Texteditor* ed) {
 }
 
 
-
-
-enum Tokenkind {
-    unknown;
-    whitespace;
-    word;
-    keyword;
-    punctuation;
-    number_literal;
-    string_literal;
-    comment;
-}
-
-struct Token {
-    string text;
-    Tokenkind kind;
-}
-
-Token get_next_token(char* start) {
-    Token token = {0};
-    token.text.chars = start;
-    token.text.length = 0;
-    token.kind = .unknown;
-
-
-    if is_letter(@start) or @start == '_' {
-        token.kind = .word;
-
-        int32 is_word_char(char c) {
-            return is_alphanumeric(c) or c == '_';
-        }
-
-        while is_word_char(start[++token.text.length]);
-
-        for i : 0 .. language_mode.keywords.length if string_equals(token.text, language_mode.keywords[i]) {
-            token.kind = .keyword;
-            break;
-        }
-
-        return token;
-    }
-
-    if is_whitespace(@start) {
-        token.kind = .whitespace;
-
-        while is_whitespace(start[++token.text.length]);
-        return token;
-    }
-
-    if is_digit(@start) {
-        token.kind = .number_literal;
-
-        while is_digit(start[++token.text.length]);
-        return token;
-    }
-
-    if start[0] == '/' and start[1] == '/' {
-        token.kind = .comment;
-
-        while start[++token.text.length];
-        return token;
-    }
-
-    if @start == '"' or @start == '\'' {
-        let end = @start;
-        token.kind = .string_literal;
-
-        bool escape = false;
-        while true {
-            let c = start[++token.text.length];
-            if escape { escape = false; continue; }
-            if c == '\\' { escape = true; continue; }
-            if c == end break;
-            if c == 0 break;
-        }
-
-        token.text.length++;
-        return token;
-    }
-
-    if is_punctuation(@start) {
-        token.kind = .punctuation;
-        token.text.length = 1;
-        return token;
-    }
-
-    token.text.length = 1;
-    return token;
-}
-
-
 void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, float32 height, uint32 line_number) {
     vec2 line_num_pos = pos;
     line_num_pos.x -= height * 2;
@@ -223,6 +132,12 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
     uint32 i = 0;
     while i < line.sb.length {
         token = get_next_token(*line.sb.content[i]);
+
+        for i : 0 .. language_mode.keywords.length if string_equals(token.text, language_mode.keywords[i]) {
+            token.kind = .keyword;
+            break;
+        }
+
         pos = draw_text(layer, pos, height, token.text, token_color(token.kind));
         i += token.text.length;
     }
