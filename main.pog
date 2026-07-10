@@ -84,14 +84,14 @@ void on_event(AppEvent event) switch (event.kind) {
                     let file = file_selector.files[entry.file_index];
                     switch (file.file_kind) {
                         case .file: {
-                            texteditor_open_file(file.path.chars);
+                            texteditor_open_file(file.full_path.chars);
                             file_selector.open = false;
                         } break;
                         case .folder: {
                             let sb = get_string_builder(*file_selector.text_field.buf, 0);
                             sb_clear(sb);
                             file_selector.text_field.cursor = {};
-                            insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, file.path);
+                            insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, file.full_path);
                             insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, "\\");
                             update_files(*file_selector);
                         } break;
@@ -426,7 +426,7 @@ FileSelectorPanel file_selector;
 void update_files(FileSelectorPanel* fs) {
     if fs.files {
         for 0 .. list_length(fs.files) {
-            free(fs.files[it].path.chars);
+            free(fs.files[it].full_path.chars);
         }
         list_delete(fs.files);
     }
@@ -518,9 +518,9 @@ void render_file_selection_menu(FileSelectorPanel* fs) {
         draw_text(text_start_pos(rect_entry, -1, 0, gh, txt), gh, txt, Cyan);
 
         string dir, file;
-        decompose_path(info.path, *dir, *file);
+        decompose_path(info.full_path, *dir, *file);
 
-        vec2 p = text_start_pos(pad_left(rect_entry, path_padding), -1, 0, glyph_height, info.path);
+        vec2 p = text_start_pos(pad_left(rect_entry, path_padding), -1, 0, glyph_height, info.full_path);
         p = draw_text(p, glyph_height, dir,  Gray);
         p = draw_text(p, glyph_height, file, White);
 

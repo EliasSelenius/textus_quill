@@ -32,15 +32,16 @@ struct ColorTheme {
 }
 
 Color token_color(Tokenkind kind) switch kind {
-    case .whitespace:     return theme.whitespace;
-    case .word:           return theme.word;
-    case .keyword:        return theme.keyword;
-    case .punctuation:    return theme.punctuation;
-    case .number_literal: return theme.number_literal;
-    case .string_literal: return theme.string_literal;
-    case .comment:        return theme.comment;
-    case .unknown:        return theme.unknown;
-    default: return White;
+    case .whitespace:       return theme.whitespace;
+    case .word:             return theme.word;
+    case .keyword:          return theme.keyword;
+    case .punctuation:      return theme.punctuation;
+    case .decimal:
+    case .integer:          return theme.number_literal;
+    case .string_literal:   return theme.string_literal;
+    case .comment:          return theme.comment;
+    case .unknown:          return theme.unknown;
+    default:                return White;
 }
 
 void init_languages() {
@@ -64,7 +65,7 @@ void init_languages() {
 }
 
 void init_themes() {
-    theme_programer_art.background     = {12, 12, 12, 255} as Color;
+    theme_programer_art.background     = {12, 12, 12, 200} as Color;
     theme_programer_art.whitespace     = White;
     theme_programer_art.word           = Gray;
     theme_programer_art.keyword        = Purple;

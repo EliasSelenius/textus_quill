@@ -8,7 +8,7 @@ struct Project {
 
 void add_folder(FileInfo info, void* user_data) {
     Project p = {};
-    p.root_file_path = alloc_string_copy(info.path);
+    p.root_file_path = alloc_string_copy(info.full_path);
     p.name = trim_start(substr_to_end(p.root_file_path, '/'), 1);
     list_add(*projects, *p);
 }
