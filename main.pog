@@ -245,7 +245,7 @@ int32 main() {
         immediate_layer = *static_ui;
     }
 
-    let img_ed = open_image("../weekend_proj/assets/spritesheet.bmp");
+    let img_ed = open_image("../sector/assets/spritesheet.bmp");
 
     while grax_loop() {
 
@@ -317,7 +317,13 @@ int32 main() {
                 float32 pad = ed.glyph_height*2  +  (ed.glyph_height * 0.7)/2.0 * 5;
 
                 ed.target_cam.pos.x = max((app.width_over_height)*s  - pad, pos.x);
-                if ed.follow_cursor  ed.target_cam.pos.y = pos.y;
+                if ed.follow_cursor {
+                    float diff = ed.cam.pos.y - pos.y;
+                    float thres = ed.glyph_height*10.0;
+                    if abs(diff) > thres {
+                        ed.target_cam.pos.y = pos.y;
+                    }
+                }
 
             }
 
