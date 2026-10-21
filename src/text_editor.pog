@@ -147,7 +147,7 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
         UI_Rect rect = {pos, {stride, height}};
         rect.size.x *= token.text.length;
         rect.center.x += ((token.text.length as float32) * 0.5 - 0.5) * stride;
-        draw_rect(layer, rect, opacity(tok_color, 0.2));
+        // draw_rect(layer, rect, opacity(tok_color, 0.2));
 
         pos = draw_text(layer, pos, height, token.text, tok_color);
 
@@ -204,7 +204,13 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
     UI_Rect rect_cursor = {};
     rect_cursor.center = pos + cursor_pos(gh, cursor) + {-gh / 4, 0};
     rect_cursor.size = { 2*px, gh };
-    draw_rect(layer, rect_cursor, White);
+
+    // TODO: reset t=0 when cursor recives input
+    float freq = 1;
+    float t = fmod(app.total_run_time, 1.0);
+    float opa = cos(freq*t*Tau)*0.5+0.5;
+
+    draw_rect(layer, rect_cursor, opacity(White, opa));
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
         draw_cursor_line(layer, gh, pos, cursor.coord.row, 0, 1000, opacity(White, 0.1));
