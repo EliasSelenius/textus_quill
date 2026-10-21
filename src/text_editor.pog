@@ -29,13 +29,16 @@ void write(Texteditor* ed, char c) {
     insert(*ed.buf, *ed.cursor, c);
 }
 
-vec2 calc_cursor_pos(Texteditor* ed) return calc_view_pos(ed, ed.cursor.row, ed.cursor.column);
+vec2 calc_cursor_pos(Texteditor* ed) return calc_view_pos(ed, ed.cursor.coord.row, ed.cursor.coord.col);
 vec2 calc_view_pos(Texteditor* ed, uint32 row, col) {
     vec2 size = { ed.glyph_height * 0.5, ed.glyph_height };
-    vec2 pos = {};
-    pos.x += col * size.x;
-    pos.y -= row * size.y;
+    vec2 pos = {col, -(row as float)} * size;
     return pos;
+}
+
+vec2 cursor_pos(float gh, Cursor cu) {
+    vec2 size = { gh * 0.5, gh };
+    return {cu.coord.col, -(cu.coord.row as float)} * size;
 }
 
 Texteditor* texteditor_new() {
@@ -138,78 +141,79 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
             break;
         }
 
-        pos = draw_text(layer, pos, height, token.text, token_color(token.kind));
+        let tok_color = token_color(token.kind);
+
+        float32 stride = height * 0.5;
+        UI_Rect rect = {pos, {stride, height}};
+        rect.size.x *= token.text.length;
+        rect.center.x += ((token.text.length as float32) * 0.5 - 0.5) * stride;
+        draw_rect(layer, rect, opacity(tok_color, 0.2));
+
+        pos = draw_text(layer, pos, height, token.text, tok_color);
+
+
         i += token.text.length;
     }
 
-    if token.kind == Tokenkind.whitespace {
-        float32 stride = height * 0.5;
-        UI_Rect r = {pos, {stride, height}};
-        r.size.x *= token.text.length;
-        r.center.x -= ((token.text.length as float32) * 0.5 + 0.5) * stride;
-        // 2 -- 0.5
-        // 3 -- 1
-        // 4 -- 1.5
-        // 5 -- 2
-        Color color = opacity(White, 0.1);
-        draw_rect(layer, r, color);
-    }
+    // if token.kind == Tokenkind.whitespace {
+    //     float32 stride = height * 0.5;
+    //     UI_Rect r = {pos, {stride, height}};
+    //     r.size.x *= token.text.length;
+    //     r.center.x -= ((token.text.length as float32) * 0.5 + 0.5) * stride;
+    //     // 2 -- 0.5
+    //     // 3 -- 1
+    //     // 4 -- 1.5
+    //     // 5 -- 2
+    //     Color color = opacity(White, 0.1);
+    //     draw_rect(layer, r, color);
+    // }
 }
 
-void draw_cursor(RenderLayer* layer, Texteditor* ed, vec2 pos, Cursor cursor) {
+void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffer* buf, Cursor cursor) {
+    void draw_cursor_line(RenderLayer* layer, float glyph_height, vec2 pos, uint32 row, col1, col2, Color color) {
+        vec2 glyph_size = { glyph_height * 0.5, glyph_height };
+
+        UI_Rect r = {};
+        r.center = pos + {(col1+col2) / 2.0, -(row as float)} * glyph_size;
+        r.size   = {1 + col2-col1, 1} * glyph_size;
+
+        draw_rect(layer, r, color);
+    }
+
     Color cursor_color = opacity(White, 0.4);
+    float gh = glyph_height;
 
-    uint32 min_row = cursor.row;
-    uint32 min_col = cursor.column;
-    uint32 max_row = cursor.row2;
-    uint32 max_col = cursor.column2;
+    let bounds = get_selection_bounds(cursor);
+    CursorCoord mi = bounds.min;
+    CursorCoord mx = bounds.max;
 
-    if min_row > max_row {
-        min_row = cursor.row2;
-        min_col = cursor.column2;
-        max_row = cursor.row;
-        max_col = cursor.column;
-    }
-
-    void draw_cursor_line(RenderLayer* layer, Texteditor* ed, vec2 pos, uint32 row, col1, col2, Color color) {
-        vec2 glyph_size = { ed.glyph_height * 0.5, ed.glyph_height };
-        vec2 size = glyph_size;
-        size.x *= 1 + col2 - col1;
-
-        float32 col1_p = col1 * glyph_size.x;
-        float32 col2_p = col2 * glyph_size.x;
-
-        pos.y -= row * glyph_size.y;
-        pos.x += (col1_p + col2_p) / 2.0;
-
-        draw_rect(layer, pos, size, color);
-    }
-
-    if cursor.row == cursor.row2 {
-        let mi = min(cursor.column, cursor.column2);
-        let mx = max(cursor.column, cursor.column2);
-        draw_cursor_line(layer, ed, pos, cursor.row, mi, mx - 1, cursor_color);
+    if mi.row == mx.row {
+        draw_cursor_line(layer, gh, pos, mi.row, mi.col, mx.col-1, cursor_color);
     } else {
-        draw_cursor_line(layer, ed, pos, min_row, min_col, get_string_builder(*ed.buf, min_row).length, cursor_color);
-        draw_cursor_line(layer, ed, pos, max_row, 0, max_col - 1, cursor_color);
-        for uint32 row : min_row + 1 .. max_row {
-            draw_cursor_line(layer, ed, pos, row, 0, get_string_builder(*ed.buf, row).length, cursor_color);
+
+        uint32 len = get_string_builder(buf, mi.row).length;
+        draw_cursor_line(layer, gh, pos, mi.row, mi.col, len,       cursor_color);
+        draw_cursor_line(layer, gh, pos, mx.row, 0,      mx.col-1,  cursor_color);
+
+        for uint32 row : mi.row + 1 .. mx.row {
+            uint32 len = get_string_builder(buf, row).length;
+            draw_cursor_line(layer, gh, pos, row, 0, len, cursor_color);
         }
     }
 
-    float32 px = 2.0 / app.window_height * ed.cam.scale;
     UI_Rect rect_cursor = {};
-    rect_cursor.center = pos + calc_cursor_pos(ed) + {-ed.glyph_height / 4, 0};
-    rect_cursor.size = { 2*px, ed.glyph_height };
+    rect_cursor.center = pos + cursor_pos(gh, cursor) + {-gh / 4, 0};
+    rect_cursor.size = { 2*px, gh };
     draw_rect(layer, rect_cursor, White);
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
-        draw_cursor_line(layer, ed, pos, cursor.row, 0, 1000, opacity(White, 0.1));
+        draw_cursor_line(layer, gh, pos, cursor.coord.row, 0, 1000, opacity(White, 0.1));
     }
 
 }
 
 void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
+    float px = 2.0 / app.window_height * ed.cam.scale;
 
     int32 row = round(-ed.cam.pos.y / ed.glyph_height) as int32;
     int32 page = floor(ed.cam.scale / ed.glyph_height) as int32 + 1; // +1 effectively makes that floor a ceil
@@ -221,7 +225,7 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, (it + 1) as uint32);
     }
 
-    draw_cursor(layer, ed, vec2_zero, ed.cursor);
+    draw_cursor(layer, ed.glyph_height, px, vec2_zero, *ed.buf, ed.cursor);
 
     void draw_ast_node(RenderLayer* layer, Texteditor* ed, Pog_Node* node, uint32 min_row, max_row) {
         if node == null return;
@@ -229,8 +233,8 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         let tok = node.token;
         if node.name.kind != 0 tok = node.name;
 
-        if ed.cursor.row == tok.row {
-            uint32 col = ed.cursor.column;
+        if ed.cursor.coord.row == tok.row {
+            uint32 col = ed.cursor.coord.col;
             if col >= tok.col and col < tok.col + tok.data.str.length {
                 ed.node_cursor = node;
             }

@@ -279,11 +279,9 @@ int32 main() {
             // draw_text(*ui_layer, mouse_pos, ed.glyph_height, to_string(mouse_row), Black);
 
             if mouse_pressed(MouseButton.Left) {
-                ed.cursor.row = mouse_row;
-                ed.cursor.column = mouse_col;
+                ed.cursor.coord = {mouse_row, mouse_col};
                 if !key_down(Key.left_shift) {
-                    ed.cursor.row2 = ed.cursor.row;
-                    ed.cursor.column2 = ed.cursor.column;
+                    ed.cursor.start = ed.cursor.coord;
                 }
             }
 
@@ -327,16 +325,16 @@ int32 main() {
 
             }
 
-            static float32 decay = 30;
-            float32 dt = deltatime();
+            static float decay = 30;
+            float dt = deltatime();
             exp_decay(*ed.cam.pos.y, ed.target_cam.pos.y, decay, dt);
             exp_decay(*ed.cam.pos.x, ed.target_cam.pos.x, decay, dt);
             exp_decay(*ed.cam.scale, ed.target_cam.scale, decay, dt);
+            camera_to_dispatch = ed.cam;
 
             draw_texteditor(*ui_layer, ed);
             draw_tabs(*static_ui, ed);
 
-            camera_to_dispatch = ed.cam;
 
         } else draw_project_selection_menu();
 
@@ -471,7 +469,9 @@ void update_files(FileSelectorPanel* fs) {
 }
 
 void render_file_selection_menu(FileSelectorPanel* fs) {
+    float px = 2.0 / app.window_height;
     let dt = deltatime();
+
 
     float32 width = 1.5;
     const glyph_height = 0.04;
@@ -489,9 +489,12 @@ void render_file_selection_menu(FileSelectorPanel* fs) {
     decompose_path(query, *dir_path, *file_name);
 
     {
-        vec2 p = text_start_pos(pad_left(rect_background, path_padding), -1, 1, glyph_height, query);
+        vec2 start_pos = text_start_pos(pad_left(rect_background, path_padding), -1, 1, glyph_height, query);
+        vec2 p = start_pos;
         p = draw_text(p, glyph_height, dir_path,  Gray);
         p = draw_text(p, glyph_height, file_name, White);
+
+        draw_cursor(immediate_layer, glyph_height, px, start_pos, *fs.text_field.buf, fs.text_field.cursor);
 
         // draw_text(rect_background, -1, 1, glyph_height, query, White);
     }
