@@ -409,7 +409,17 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
             } break;
 
             case GLFW_KEY_KP_7:
-            case GLFW_KEY_HOME: cursor.coord.col = 0; if !shift cursor_unselect(cursor); break;
+            case GLFW_KEY_HOME: {
+                let sb = get_string_builder(buf, cursor.coord.row);
+
+                uint32 col = 0;
+                while is_whitespace(sb.content[col]) col++;
+
+                if cursor.coord.col == col    cursor.coord.col = 0;
+                else                          cursor.coord.col = col;
+
+                if !shift cursor_unselect(cursor);
+            } break;
             case GLFW_KEY_KP_1:
             case GLFW_KEY_END:  cursor.coord.col = buf.lines[cursor.coord.row].sb.length; if !shift cursor_unselect(cursor); break;
         }
