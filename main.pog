@@ -165,7 +165,8 @@ void on_event(AppEvent event) switch (event.kind) {
             insert(*file_selector.text_field.buf, *file_selector.text_field.cursor, c);
             update_files(*file_selector);
         } else if active_editor {
-            write(active_editor, c);
+            write(active_editor, utf8_encode(event.unicode_codepoint, temp_builder()));
+            // write(active_editor, c);
         }
 
         text_input_this_frame[on_text_input_call_count++] = c;
@@ -174,7 +175,7 @@ void on_event(AppEvent event) switch (event.kind) {
     default: break;
 }
 
-Transform2D camera_to_dispatch = {scale=600};
+Transform2D camera_to_dispatch = {scale=1};
 RenderLayer ui_layer;
 RenderLayer static_ui;
 
@@ -269,6 +270,7 @@ int32 main() {
 
         let ed = active_editor;
         if ed {
+            Cursor old_cursor = ed.cursor;
 
             let mouse_pos = local2world(ed.cam, Input.mouse_pos);
 
@@ -335,6 +337,7 @@ int32 main() {
             draw_texteditor(*ui_layer, ed);
             draw_tabs(*static_ui, ed);
 
+            ed.prev_cursor = old_cursor;
 
         } else draw_project_selection_menu();
 
@@ -494,7 +497,8 @@ void render_file_selection_menu(FileSelectorPanel* fs) {
         p = draw_text(p, glyph_height, dir_path,  Gray);
         p = draw_text(p, glyph_height, file_name, White);
 
-        draw_cursor(immediate_layer, glyph_height, px, start_pos, *fs.text_field.buf, fs.text_field.cursor);
+        let cursor = fs.text_field.cursor;
+        draw_cursor(immediate_layer, glyph_height, px, start_pos, *fs.text_field.buf, cursor, cursor);
 
         // draw_text(rect_background, -1, 1, glyph_height, query, White);
     }

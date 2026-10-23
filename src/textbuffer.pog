@@ -342,40 +342,40 @@ void recive_keyboard_input(TextInputField* field, Key key, Keymods mods) recive_
 
 void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mods) {
 
-    bool shift = (mods & GLFW_MOD_SHIFT) != 0;
+    bool shift = (mods & Keymods.shift) != 0;
 
-    if mods & GLFW_MOD_ALT {
+    if mods & Keymods.alt {
         switch key {
-            case GLFW_KEY_DOWN: push_line_down(buf, cursor); cursor_unselect(cursor); break;
-            case GLFW_KEY_UP:   push_line_up(buf, cursor);   cursor_unselect(cursor); break;
+            case .down: push_line_down(buf, cursor); cursor_unselect(cursor); break;
+            case .up:   push_line_up(buf, cursor);   cursor_unselect(cursor); break;
         }
-    } else if mods & GLFW_MOD_CONTROL {
+    } else if mods & Keymods.control {
         switch (key) {
-            case GLFW_KEY_RIGHT: jump_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_LEFT:  jump_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_DOWN:  jump_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_UP:    jump_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case .right: jump_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case .left:  jump_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case .down:  jump_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case .up:    jump_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
 
-            case GLFW_KEY_X: {
+            case .X: {
                 char* text = selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars;
                 glfwSetClipboardString(app.main_window, text);
                 delete_selection(buf, cursor);
             } break;
-            case GLFW_KEY_C: {
+            case .C: {
                 char* text = selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars;
                 glfwSetClipboardString(app.main_window, text);
             } break;
-            case GLFW_KEY_V: {
+            case .V: {
                 char* text = glfwGetClipboardString(app.main_window);
                 insert(buf, cursor, text);
             } break;
 
-            case GLFW_KEY_BACKSPACE: {
+            case .backspace: {
                 jump_cursor(buf, cursor, -1);
                 delete_selection(buf, cursor);
             } break;
 
-            case GLFW_KEY_DELETE: {
+            case .delete: {
                 jump_cursor(buf, cursor, 1);
                 delete_selection(buf, cursor);
             } break;
@@ -383,16 +383,16 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
         }
     } else {
         switch (key) {
-            case GLFW_KEY_RIGHT: move_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_LEFT:  move_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_DOWN:  move_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
-            case GLFW_KEY_UP:    move_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case .right: move_cursor(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case .left:  move_cursor(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
+            case .down:  move_cursor_vertical(buf, cursor,  1); if !shift cursor_unselect(cursor); break;
+            case .up:    move_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
 
-            case GLFW_KEY_ENTER:     insert(buf, cursor, '\n'); break;
-            case GLFW_KEY_TAB:       insert_tab(buf, cursor); break;
+            case .enter:     insert(buf, cursor, '\n'); break;
+            case .tab:       insert_tab(buf, cursor); break;
 
-            case GLFW_KEY_BACKSPACE: delete_backward(buf, cursor); cursor_unselect(cursor); break;
-            case GLFW_KEY_DELETE: {
+            case .backspace: delete_backward(buf, cursor); cursor_unselect(cursor); break;
+            case .delete: {
 
                 if shift {
                     uint32 row = cursor.coord.row;
@@ -408,8 +408,8 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
                 cursor_unselect(cursor);
             } break;
 
-            case GLFW_KEY_KP_7:
-            case GLFW_KEY_HOME: {
+            case .kp_7:
+            case .home: {
                 let sb = get_string_builder(buf, cursor.coord.row);
 
                 uint32 col = 0;
@@ -420,8 +420,8 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
 
                 if !shift cursor_unselect(cursor);
             } break;
-            case GLFW_KEY_KP_1:
-            case GLFW_KEY_END:  cursor.coord.col = buf.lines[cursor.coord.row].sb.length; if !shift cursor_unselect(cursor); break;
+            case .kp_1:
+            case .end:  cursor.coord.col = buf.lines[cursor.coord.row].sb.length; if !shift cursor_unselect(cursor); break;
         }
     }
 }

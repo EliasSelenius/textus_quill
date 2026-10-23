@@ -17,7 +17,7 @@ struct Texteditor {
     Transform2D target_cam;
 
     Textbuffer buf;
-    Cursor cursor;
+    Cursor cursor, prev_cursor;
     bool follow_cursor;
 
     float32 glyph_height;
@@ -45,8 +45,8 @@ Texteditor* texteditor_new() {
     Texteditor* ed = malloc(sizeof Texteditor);
     @ed = {};
 
-    ed.cam = {scale=1, pos={1,0}};
-    ed.target_cam = ed.cam;
+    ed.cam        = {scale=2, pos={0,0}};
+    ed.target_cam = {scale=1, pos={1,0}};
 
     ed.buf = create_textbuffer();
     ed.glyph_height = 0.035;
@@ -169,7 +169,7 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
     // }
 }
 
-void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffer* buf, Cursor cursor) {
+void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffer* buf, Cursor cursor, prev_cursor) {
     void draw_cursor_line(RenderLayer* layer, float glyph_height, vec2 pos, uint32 row, col1, col2, Color color) {
         vec2 glyph_size = { glyph_height * 0.5, glyph_height };
 
@@ -180,7 +180,7 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
         draw_rect(layer, r, color);
     }
 
-    Color cursor_color = opacity(White, 0.4);
+    Color color_select = opacity(White, 0.2);
     float gh = glyph_height;
 
     let bounds = get_selection_bounds(cursor);
@@ -188,16 +188,16 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
     CursorCoord mx = bounds.max;
 
     if mi.row == mx.row {
-        draw_cursor_line(layer, gh, pos, mi.row, mi.col, mx.col-1, cursor_color);
+        draw_cursor_line(layer, gh, pos, mi.row, mi.col, mx.col-1, color_select);
     } else {
 
         uint32 len = get_string_builder(buf, mi.row).length;
-        draw_cursor_line(layer, gh, pos, mi.row, mi.col, len,       cursor_color);
-        draw_cursor_line(layer, gh, pos, mx.row, 0,      mx.col-1,  cursor_color);
+        draw_cursor_line(layer, gh, pos, mi.row, mi.col, len,       color_select);
+        draw_cursor_line(layer, gh, pos, mx.row, 0,      mx.col-1,  color_select);
 
         for uint32 row : mi.row + 1 .. mx.row {
             uint32 len = get_string_builder(buf, row).length;
-            draw_cursor_line(layer, gh, pos, row, 0, len, cursor_color);
+            draw_cursor_line(layer, gh, pos, row, 0, len, color_select);
         }
     }
 
@@ -205,12 +205,20 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
     rect_cursor.center = pos + cursor_pos(gh, cursor) + {-gh / 4, 0};
     rect_cursor.size = { 2*px, gh };
 
-    // TODO: reset t=0 when cursor recives input
-    float freq = 1;
-    float t = fmod(app.total_run_time, 1.0);
-    float opa = cos(freq*t*Tau)*0.5+0.5;
+    static float time = 0;
+    if memcmp(*cursor, *prev_cursor, sizeof Cursor) != 0 {
+        time = 0;
+    } else {
+        float dt = app.frame_time as float;
+        time = fmod(time+dt, 1.0);
+    }
 
-    draw_rect(layer, rect_cursor, opacity(White, opa));
+    float freq = 1;
+    float opa = cos(freq*time*Tau)*0.5+0.5;
+
+    Color color_cursor = opacity(White, opa);
+
+    draw_rect(layer, rect_cursor, color_cursor);
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
         draw_cursor_line(layer, gh, pos, cursor.coord.row, 0, 1000, opacity(White, 0.1));
@@ -231,7 +239,7 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
         draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, (it + 1) as uint32);
     }
 
-    draw_cursor(layer, ed.glyph_height, px, vec2_zero, *ed.buf, ed.cursor);
+    draw_cursor(layer, ed.glyph_height, px, vec2_zero, *ed.buf, ed.cursor, ed.prev_cursor);
 
     void draw_ast_node(RenderLayer* layer, Texteditor* ed, Pog_Node* node, uint32 min_row, max_row) {
         if node == null return;
@@ -335,23 +343,23 @@ void text_editor_recive_keyboard_input(Texteditor* ed, Key key, Keymods mods) {
 
     switch (mods) {
         case 0: switch (key) {
-            case GLFW_KEY_PAGE_UP: {
+            case .page_up: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
                 move_cursor_vertical(*ed.buf, *ed.cursor, -num_lines_on_page);
                 cursor_unselect(*ed.cursor);
             } break;
-            case GLFW_KEY_PAGE_DOWN: {
+            case .page_down: {
                 int32 num_lines_on_page = (2 / ed.glyph_height) as int32;
                 move_cursor_vertical(*ed.buf, *ed.cursor, num_lines_on_page);
                 cursor_unselect(*ed.cursor);
             } break;
         } break;
 
-        case GLFW_MOD_CONTROL: switch (key) {
-            case GLFW_KEY_S: texteditor_save_file(ed); break;
+        case .control: switch (key) {
+            case .S: texteditor_save_file(ed); break;
         } break;
 
-        case GLFW_MOD_ALT: switch (key) {
+        case .alt: switch (key) {
         } break;
     }
 
