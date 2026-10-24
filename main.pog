@@ -74,6 +74,10 @@ void on_event(AppEvent event) switch (event.kind) {
     case .key_press: {
         // print("[INFO]: \"", glfwGetKeyName(Key.unknown, event.scancode), "\" scancode: ", event.scancode, " key: ", event.key, " mods: ", event.mods, "\n");
 
+        if (event.mods & .num_lock) == 0 {
+            print("num lock\n");
+            event.key = keypad_convert_to_function(event.key);
+        }
 
         if file_selector.open {
             switch (event.key) {

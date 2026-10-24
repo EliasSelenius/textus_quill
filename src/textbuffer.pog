@@ -408,7 +408,6 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
                 cursor_unselect(cursor);
             } break;
 
-            case .kp_7:
             case .home: {
                 let sb = get_string_builder(buf, cursor.coord.row);
 
@@ -420,8 +419,11 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
 
                 if !shift cursor_unselect(cursor);
             } break;
-            case .kp_1:
-            case .end:  cursor.coord.col = buf.lines[cursor.coord.row].sb.length; if !shift cursor_unselect(cursor); break;
+
+            case .end: {
+                cursor.coord.col = buf.lines[cursor.coord.row].sb.length;
+                if !shift cursor_unselect(cursor);
+            } break;
         }
     }
 }
