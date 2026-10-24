@@ -121,15 +121,15 @@ void texteditor_save_file(Texteditor* ed) {
 }
 
 
-void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, float32 height, uint32 line_number) {
+void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, string select_str, vec2 pos, float gh, uint32 line_number) {
     vec2 line_num_pos = pos;
-    line_num_pos.x -= height * 2;
-    draw_text_backwards(layer, line_num_pos, height * 0.7, to_string(line_number), Gray);
+    line_num_pos.x -= gh * 2;
+    draw_text_backwards(layer, line_num_pos, gh * 0.7, to_string(line_number), Gray);
 
     int32 s = line_number as int32;
     Color status_color = { random_range(s++, 0, 255) as uint8, random_range(s++, 0, 255) as uint8, random_range(s++, 0, 255) as uint8, 255 };
-    vec2 status_pos = pos - {height*0.5, 0};
-    draw_rect(layer, status_pos, make_vec(height*0.5*0.3, height), status_color);
+    vec2 status_pos = pos - {gh*0.5, 0};
+    draw_rect(layer, status_pos, make_vec(gh*0.5*0.3, gh), status_color);
 
     Token token = {};
     uint32 i = 0;
@@ -143,21 +143,30 @@ void draw_texteditor_line(RenderLayer* layer, TextbufferLine* line, vec2 pos, fl
 
         let tok_color = token_color(token.kind);
 
-        float32 stride = height * 0.5;
-        UI_Rect rect = {pos, {stride, height}};
-        rect.size.x *= token.text.length;
-        rect.center.x += ((token.text.length as float32) * 0.5 - 0.5) * stride;
-        // draw_rect(layer, rect, opacity(tok_color, 0.2));
+        UI_Rect rect_glyph = {pos, {gh*0.5, gh}};
+        UI_Rect rect_token = scale_pivot(rect_glyph, token.text.length, 1,  -1,0);
 
-        pos = draw_text(layer, pos, height, token.text, tok_color);
+        // draw_rect(layer, rect_token, opacity(tok_color, 0.2));
 
+        int32 substr_index = find_substr(token.text, select_str);
+        if substr_index != -1 {
+
+            float shifts = substr_index as float;
+            float len = select_str.length as float;
+            UI_Rect rect_substr = scale_pivot(move(rect_glyph, shifts, 0),  len,1,   -1,0);
+
+            draw_rect(layer, rect_substr, opacity(Gray, 0.2));
+        }
+
+
+        pos = draw_text(layer, pos, gh, token.text, tok_color);
 
         i += token.text.length;
     }
 
     // if token.kind == Tokenkind.whitespace {
-    //     float32 stride = height * 0.5;
-    //     UI_Rect r = {pos, {stride, height}};
+    //     float32 stride = gh * 0.5;
+    //     UI_Rect r = {pos, {stride, gh}};
     //     r.size.x *= token.text.length;
     //     r.center.x -= ((token.text.length as float32) * 0.5 + 0.5) * stride;
     //     // 2 -- 0.5
@@ -205,20 +214,29 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
     rect_cursor.center = pos + cursor_pos(gh, cursor) + {-gh / 4, 0};
     rect_cursor.size = { 2*px, gh };
 
+    float dt = app.frame_time as float;
+
     static float time = 0;
+    static vec2 prev_cursor_pos;
+
     if memcmp(*cursor, *prev_cursor, sizeof Cursor) != 0 {
         time = 0;
+        prev_cursor_pos = pos + cursor_pos(gh, prev_cursor) + {-gh / 4, 0};
     } else {
-        float dt = app.frame_time as float;
         time = fmod(time+dt, 1.0);
     }
+
+    float speed = 10.0 * length(prev_cursor_pos - rect_cursor.center);
+    prev_cursor_pos = move(prev_cursor_pos, rect_cursor.center, speed*dt);
 
     float freq = 1;
     float opa = cos(freq*time*Tau)*0.5+0.5;
 
     Color color_cursor = opacity(White, opa);
 
-    draw_rect(layer, rect_cursor, color_cursor);
+    // draw_rect(layer, rect_cursor, color_cursor);
+
+    add_quad(*layer.geometry, rect_cursor.center, prev_cursor_pos, rect_cursor.size, vec2_zero, vec2_one, color_cursor);
 
     if !is_doing_selection(cursor) {          // TODO: the 1000 here is a bit arbitrary...
         draw_cursor_line(layer, gh, pos, cursor.coord.row, 0, 1000, opacity(White, 0.1));
@@ -226,8 +244,34 @@ void draw_cursor(RenderLayer* layer, float glyph_height, px, vec2 pos, Textbuffe
 
 }
 
+Token get_cursor_token(Textbuffer* buf, CursorCoord coord) {
+    let sb = get_string_builder(buf, coord.row);
+    uint32 col = 0;
+
+    while i < sb.length {
+        Token tok = get_next_token(sb.content + col);
+
+        uint32 len = tok.text.length;
+        if coord.col < col+len    return tok;
+        if len == 0               return {};
+        col += len;
+    }
+
+    return {};
+}
+
 void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
     float px = 2.0 / app.window_height * ed.cam.scale;
+
+    StringBuilder sb_selection={};
+    string select_str = selection_to_string(*ed.buf, ed.cursor, *sb_selection);
+
+    if !is_doing_selection(ed.cursor) {
+        Token cursor_token = get_cursor_token(*ed.buf, ed.cursor.coord);
+        if cursor_token.kind != .whitespace {
+            select_str = cursor_token.text;
+        }
+    }
 
     int32 row = round(-ed.cam.pos.y / ed.glyph_height) as int32;
     int32 page = floor(ed.cam.scale / ed.glyph_height) as int32 + 1; // +1 effectively makes that floor a ceil
@@ -236,8 +280,10 @@ void draw_texteditor(RenderLayer* layer, Texteditor* ed) {
 
     for row_start .. row_end+1 {
         vec2 pos = {0, it * -ed.glyph_height};
-        draw_texteditor_line(layer, *ed.buf.lines[it], pos, ed.glyph_height, (it + 1) as uint32);
+        draw_texteditor_line(layer, *ed.buf.lines[it], select_str, pos, ed.glyph_height, (it + 1) as uint32);
     }
+
+    sb_free(sb_selection);
 
     draw_cursor(layer, ed.glyph_height, px, vec2_zero, *ed.buf, ed.cursor, ed.prev_cursor);
 

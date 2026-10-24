@@ -203,6 +203,9 @@ int32 main() {
 
     grax_init();
     app.on_event = on_event;
+
+    glfwMaximizeWindow(app.main_window);
+
     init_draw2d();
 
     init_themes();
@@ -285,7 +288,7 @@ int32 main() {
             // draw_rect(*ui_layer, mouse_pos, make_vec2(ed.glyph_height), White);
             // draw_text(*ui_layer, mouse_pos, ed.glyph_height, to_string(mouse_row), Black);
 
-            if mouse_pressed(MouseButton.Left) {
+            if mouse_down(MouseButton.Left) {
                 ed.cursor.coord = {mouse_row, mouse_col};
                 if !key_down(Key.left_shift) {
                     ed.cursor.start = ed.cursor.coord;

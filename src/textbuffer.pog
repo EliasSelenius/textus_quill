@@ -108,7 +108,8 @@ void textbuffer_to_string(Textbuffer* buf, StringBuilder* sb) {
     sb_remove(sb, sb.length - 1, 1); // remove trailing '\n'
 }
 
-string selection_to_string(Textbuffer* buf, CursorSelectionBounds bounds, StringBuilder* sb) {
+string selection_to_string(Textbuffer* buf, Cursor cursor, StringBuilder* sb) {
+    let bounds = get_selection_bounds(cursor);
 
     if bounds.min.row == bounds.max.row {
         let line = get_string_builder(buf, bounds.min.row);
@@ -152,12 +153,13 @@ void push_line_up  (Textbuffer* buf, Cursor* cursor) { if swap_lines(buf, cursor
 
 
 void clamp_cursor_column(Textbuffer* buf, Cursor* cursor) {
-    let line_len = buf.lines[cursor.coord.row].sb.length;
+    uint32 line_len = 0;
+    if cursor.coord.row < list_length(buf.lines)
+        line_len = buf.lines[cursor.coord.row].sb.length;
+
     if cursor.coord.col > line_len {
         cursor.coord.col = line_len;
     }
-
-    // cursor.coord.col = clamp(cursor.coord.col, 0, buf.lines[cursor.coord.row].sb.length);
 }
 
 // returns true if cursor moved
@@ -274,10 +276,18 @@ void delete_bounds(Textbuffer* buf, CursorSelectionBounds bounds) {
 }
 
 void delete_row(Textbuffer* buf, uint32 row, StringBuilder* sb) {
+    uint32 len = list_length(buf.lines);
+    if row < len; else return;
+
     let del = get_string_builder(buf, row);
     if sb  sb_append(sb, del.content);
-    sb_free(@del);
-    list_ordered_remove(buf.lines, row);
+
+    if len == 1 {
+        sb_clear(del);
+    } else {
+        sb_free(@del);
+        list_ordered_remove(buf.lines, row);
+    }
 }
 
 void delete_forward(Textbuffer* buf, Cursor* cursor) {
@@ -357,12 +367,12 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
             case .up:    jump_cursor_vertical(buf, cursor, -1); if !shift cursor_unselect(cursor); break;
 
             case .X: {
-                char* text = selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars;
+                char* text = selection_to_string(buf, @cursor, temp_builder()).chars;
                 glfwSetClipboardString(app.main_window, text);
                 delete_selection(buf, cursor);
             } break;
             case .C: {
-                char* text = selection_to_string(buf, get_selection_bounds(@cursor), temp_builder()).chars;
+                char* text = selection_to_string(buf, @cursor, temp_builder()).chars;
                 glfwSetClipboardString(app.main_window, text);
             } break;
             case .V: {
@@ -396,11 +406,15 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
 
                 if shift {
                     uint32 row = cursor.coord.row;
-                    cursor.coord.row = 0;
+                    if row < list_length(buf.lines) {
+                        let sb = get_string_builder(buf, row);
+                        glfwSetClipboardString(app.main_window, sb.content);
+                        delete_row(buf, row, null);
 
-                    char* text = get_string_builder(buf, row).content;
-                    glfwSetClipboardString(app.main_window, text);
-                    delete_row(buf, row, null);
+                        if row != 0 and row >= list_length(buf.lines) {
+                            cursor.coord.row--;
+                        }
+                    }
 
                 } else {
                     delete_forward(buf, cursor);
