@@ -9,6 +9,11 @@ ColorTheme* next_theme;
 ColorTheme theme_programer_art;
 ColorTheme theme_kimbie_dark;
 
+ColorTheme*[] themes = {
+    *theme_kimbie_dark,
+    *theme_programer_art
+};
+
 ProgLanguage[] languages;
 ProgLanguage language_mode;
 
@@ -103,3 +108,17 @@ void set_theme(ColorTheme* new_theme) {
     theme_lerp_factor = 0;
 }
 
+void calc_theme() { // calc theme
+    let t = min(1.0, theme_lerp_factor);
+    theme_lerp_factor += deltatime();
+
+    theme.background     = lerp(t, prev_theme.background,     next_theme.background);
+    theme.whitespace     = lerp(t, prev_theme.whitespace,     next_theme.whitespace);
+    theme.word           = lerp(t, prev_theme.word,           next_theme.word);
+    theme.keyword        = lerp(t, prev_theme.keyword,        next_theme.keyword);
+    theme.punctuation    = lerp(t, prev_theme.punctuation,    next_theme.punctuation);
+    theme.number_literal = lerp(t, prev_theme.number_literal, next_theme.number_literal);
+    theme.string_literal = lerp(t, prev_theme.string_literal, next_theme.string_literal);
+    theme.comment        = lerp(t, prev_theme.comment,        next_theme.comment);
+    theme.unknown        = lerp(t, prev_theme.unknown,        next_theme.unknown);
+}

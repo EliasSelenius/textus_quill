@@ -39,6 +39,9 @@ include "../pog/compiler/src/ast.pog";
     - line color status in margin (is unsaved, is untracked addition for source controll)
     - measure words per minute
     - scrollbar
+    - codemap
+
+    custom window frame
 
 
     intelisense engine:
@@ -139,13 +142,8 @@ void on_event(AppEvent event) switch (event.kind) {
                 case .P: file_selector.open = true; update_files(*file_selector); break;
 
                 case .T: {
-                    ColorTheme*[] themes = {
-                        *theme_kimbie_dark,
-                        *theme_programer_art
-                    };
-
-                    static uint32 i = 0;
-                    set_theme(themes[i++ % themes.length]);
+                    static uint32 theme_index = 0;
+                    set_theme(themes[theme_index++ % themes.length]);
                 } break;
 
                 case .N: texteditor_new(); break;
@@ -198,13 +196,66 @@ int32 current_editor_index = 0;
 Editor* current_editor() return *editors[current_editor_index];
 
 
+void draw_window_frame() {
+
+    bool decorated = glfwGetWindowAttrib(app.main_window, GLFW_DECORATED);
+    bool maximized = glfwGetWindowAttrib(app.main_window, GLFW_MAXIMIZED);
+
+    // glfwGetWindowPos(GLFWwindow* window, int32* xpos, int32* ypos);
+    // glfwSetWindowPos(GLFWwindow* window, int32 xpos, int32 ypos);
+
+
+    float win_width = 2.0 * app.width_over_height;
+    float bar_height = 0.05;
+    UI_Rect rect_bar = {{0, 1 - bar_height/2.0}, {win_width, bar_height}};
+
+    vec2 iconsize = {bar_height, bar_height};
+
+    UI_Rect rect_close    = place({{}, iconsize} as UI_Rect, 1,1,  app.top_right);
+    UI_Rect rect_minimize = move(rect_close, -1, 0);
+    UI_Rect rect_iconify  = move(rect_close, -2, 0);
+
+    bool window_button(UI_Rect rect, Color color) {
+        bool pressed = false;
+        vec4 c = make_vec(color);
+
+        if hover(rect) {
+            if mouse_pressed(MouseButton.Left)   pressed = true;
+            c = c*0.5;
+        }
+
+        draw_rect(rect, rgba(c));
+        return pressed;
+    }
+
+    draw_rect(rect_bar, DarkGray);
+
+    Color color = White;
+
+    if window_button(rect_iconify, color) {
+        glfwIconifyWindow(app.main_window);
+    }
+
+    if window_button(rect_minimize, color) {
+        if maximized glfwRestoreWindow(app.main_window);
+        else         glfwMaximizeWindow(app.main_window);
+    }
+
+    if window_button(rect_close, color) {
+        glfwSetWindowShouldClose(app.main_window, true);
+    }
+
+}
+
 
 int32 main() {
 
     grax_init();
     app.on_event = on_event;
 
-    glfwMaximizeWindow(app.main_window);
+    // glfwSetWindowAttrib(app.main_window, GLFW_DECORATED, GLFW_FALSE);
+
+    // DwmExtendFrameIntoClientArea();
 
     init_draw2d();
 
@@ -258,35 +309,31 @@ int32 main() {
 
     while grax_loop() {
 
-        { // calc theme
-            let t = min(1.0, theme_lerp_factor);
-            theme_lerp_factor += deltatime();
+        static ivec2 window_pos_prev = {};
+        static ivec2 window_pos = {};
 
-            theme.background     = lerp(t, prev_theme.background,     next_theme.background);
-            theme.whitespace     = lerp(t, prev_theme.whitespace,     next_theme.whitespace);
-            theme.word           = lerp(t, prev_theme.word,           next_theme.word);
-            theme.keyword        = lerp(t, prev_theme.keyword,        next_theme.keyword);
-            theme.punctuation    = lerp(t, prev_theme.punctuation,    next_theme.punctuation);
-            theme.number_literal = lerp(t, prev_theme.number_literal, next_theme.number_literal);
-            theme.string_literal = lerp(t, prev_theme.string_literal, next_theme.string_literal);
-            theme.comment        = lerp(t, prev_theme.comment,        next_theme.comment);
-            theme.unknown        = lerp(t, prev_theme.unknown,        next_theme.unknown);
+        window_pos_prev = window_pos;
+        glfwGetWindowPos(app.main_window, *window_pos.x, *window_pos.y);
 
-            set_clear_color(theme.background);
-        }
+        ivec2 diff = window_pos - window_pos_prev;
 
+        calc_theme();
+        set_clear_color(theme.background);
+
+        draw_window_frame();
 
         let ed = active_editor;
         if ed {
             Cursor old_cursor = ed.cursor;
+            float gh = ed.glyph_height;
 
             let mouse_pos = local2world(ed.cam, Input.mouse_pos);
 
-            uint32 mouse_row = clamp(round(-mouse_pos.y / ed.glyph_height), 0, list_length(ed.buf.lines) - 1) as uint32;
-            uint32 mouse_col = clamp(round(mouse_pos.x / (ed.glyph_height*0.5)), 0, get_string_builder(*ed.buf, mouse_row).length) as uint32;
+            uint32 mouse_row = clamp(round(-mouse_pos.y / gh), 0, list_length(ed.buf.lines) - 1) as uint32;
+            uint32 mouse_col = clamp(round(mouse_pos.x / (gh*0.5)), 0, get_string_builder(*ed.buf, mouse_row).length) as uint32;
 
-            // draw_rect(*ui_layer, mouse_pos, make_vec2(ed.glyph_height), White);
-            // draw_text(*ui_layer, mouse_pos, ed.glyph_height, to_string(mouse_row), Black);
+            // draw_rect(*ui_layer, mouse_pos, make_vec2(gh), White);
+            // draw_text(*ui_layer, mouse_pos, gh, to_string(mouse_row), Black);
 
             if mouse_down(MouseButton.Left) {
                 ed.cursor.coord = {mouse_row, mouse_col};
@@ -316,20 +363,29 @@ int32 main() {
 
 
             {
-                let pos = calc_cursor_pos(ed);
+                let cursor_pos = calc_cursor_pos(ed);
 
-                float32 s = ed.cam.scale;
-                if pos.x > s*2  pos.x -= s*1;
-                else pos.x = s * app.width_over_height/2.0;
+                float win_height = ed.cam.scale*2.0;
+                float win_width  = win_height * app.width_over_height;
 
-                float32 pad = ed.glyph_height*2  +  (ed.glyph_height * 0.7)/2.0 * 5;
+                float x = win_width/4.0;
 
-                ed.target_cam.pos.x = max((app.width_over_height)*s  - pad, pos.x);
+                if cursor_pos.x > win_width/2.0 {
+                    x = cursor_pos.x - win_height/2.0;
+                }
+
+                float gh_linenums = gh * 0.7;
+                float linenum_space = gh_linenums/2.0 * 5;
+                float margin = gh*2 + linenum_space;
+
+                ed.target_cam.pos.x = max(win_width/2.0 - margin, x);
+
+
                 if ed.follow_cursor {
-                    float diff = ed.cam.pos.y - pos.y;
-                    float thres = ed.glyph_height*10.0;
+                    float diff = ed.cam.pos.y - cursor_pos.y;
+                    float thres = gh*10.0;
                     if abs(diff) > thres {
-                        ed.target_cam.pos.y = pos.y;
+                        ed.target_cam.pos.y = cursor_pos.y;
                     }
                 }
 

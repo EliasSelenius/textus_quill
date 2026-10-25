@@ -248,7 +248,7 @@ Token get_cursor_token(Textbuffer* buf, CursorCoord coord) {
     let sb = get_string_builder(buf, coord.row);
     uint32 col = 0;
 
-    while i < sb.length {
+    while col < sb.length {
         Token tok = get_next_token(sb.content + col);
 
         uint32 len = tok.text.length;
