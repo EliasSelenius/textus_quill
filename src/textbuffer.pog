@@ -390,6 +390,12 @@ void recive_keyboard_input(Textbuffer* buf, Cursor* cursor, Key key, Keymods mod
                 delete_selection(buf, cursor);
             } break;
 
+            case .enter: {
+                if shift move_cursor_vertical(buf, cursor, -1);
+                cursor.coord.col = buf.lines[cursor.coord.row].sb.length;
+                cursor_unselect(cursor);
+                insert(buf, cursor, '\n');
+            } break;
         }
     } else {
         switch (key) {
