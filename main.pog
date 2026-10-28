@@ -42,8 +42,10 @@ include "../pog/compiler/src/ast.pog";
     - scrollbar
     - codemap
 
-    custom window frame
+    - custom window frame
 
+    - persistence
+        remember open files
 
     intelisense engine:
     - texteditor internal text format -> tokens for parser
@@ -310,6 +312,7 @@ int32 main() {
     let img_ed = open_image("../sector/assets/spritesheet.bmp");
 
     while grax_loop() {
+        UI_Rect rect_window = rect_pp(app.bottom_left, app.top_right);
 
         static ivec2 window_pos_prev = {};
         static ivec2 window_pos = {};
@@ -328,6 +331,8 @@ int32 main() {
         if ed {
             Cursor old_cursor = ed.cursor;
             float gh = ed.glyph_height;
+
+            UI_Rect rect_ed = rect_window;
 
             let mouse_pos = local2world(ed.cam, Input.mouse_pos);
 
@@ -400,6 +405,7 @@ int32 main() {
             exp_decay(*ed.cam.scale, ed.target_cam.scale, decay, dt);
             camera_to_dispatch = ed.cam;
 
+            scrollbar(rect_ed, ed);
             draw_texteditor(*ui_layer, ed);
             draw_tabs(*static_ui, ed);
 
@@ -450,6 +456,48 @@ void draw_tabs(RenderLayer* layer, Texteditor* ed) {
         current_ed = current_ed.next;
         if current_ed != ed goto loop;
     }
+}
+
+void scrollbar(UI_Rect rect_ed, Texteditor* ed) {
+    float px = 2.0 / app.window_height;
+    float gh = ed.glyph_height;
+
+    uint32 line_count = list_length(ed.buf.lines);
+    float buffer_height = line_count * gh;
+
+    float w = 20*px;
+    float vh = rect_ed.size.y;
+
+    float s = vh * ed.cam.scale / buffer_height;
+    float p = ed.cam.pos.y / buffer_height;
+
+    float sh = vh * s;
+
+    UI_Rect rect_slide = child(rect_ed, 1,0, w, vh);
+    UI_Rect rect_slider = translate(child(rect_slide, 0,1,  w,sh),  0, sh/2.0 + vh * p);
+
+    vec4 color_slide  = {0.5,0.5,0.5, 0.2};
+    vec4 color_slider = {0.6,0.6,0.6, 0.2};
+
+    if hover(rect_slide) {
+        float my = Input.mouse_pos.y;
+        float p = (my - top(rect_slide)) / vh;
+
+        if mouse_down(MouseButton.Left) {
+            ed.target_cam.pos.y = buffer_height*p;
+        }
+
+        draw_rect(translate(child(rect_slide, 0,1,  w,2.0*px),  0, px + vh * p),  White);
+
+        if hover(rect_slider) {
+            color_slider.w = 1.0;
+        }
+    }
+
+
+    draw_rect(rect_slide,  rgba(color_slide));
+    draw_rect(pad(rect_slider, 4.0*px), rgba(color_slider));
+
 }
 
 void draw_codebase(Pog_Codebase* cb) {
