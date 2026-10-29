@@ -17,6 +17,7 @@ include "../pog/compiler/src/ast.pog";
 // ..\plang\bin\plang.exe main.pog cflags -O3 -lglfw3dll -l..\plang\bin\pog_compiler
 // ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -l..\plang\bin\pog_compiler -lShlwapi.lib -O0 -g -fsanitize=address -fno-omit-frame-pointer
 // ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -O0 -g
+// ..\plang\bin\plang.exe main.pog cflags -lglfw3dll -luser32 -lgdi32 -lshell32 -lkernel32 -O0 -g
 // ..\plang\bin\plang.exe main.pog cflags -l..\glfw-3.3.4\bin\myglfw -luser32 -lgdi32 -lshell32 -lkernel32 -O0 -g
 
 
